@@ -37,7 +37,7 @@ export const GIT_SIGNALS = {
   branchTypeFix: 0.15, // fix/, hotfix/ — Hericko [4]
 } as const;
 
-// ── Issue Enrichment Signals [3][5] ──
+// ── Issue Enrichment Signals [3][5][9] ──
 
 export const ISSUE_SIGNALS = {
   wontFixByDesign: 0.35, // Highest weight — Aranda [3]
@@ -45,6 +45,7 @@ export const ISSUE_SIGNALS = {
   platformSpecificLabel: 0.1, // Ying [5]: cross-platform surprise
   issueUnreachable: 0.1, // Aranda [3]: absent = protect more
   prReviewComments: 0.15, // Aranda [3]: coordination evidence
+  domainCouplingSignal: 0.15, // Aryani [9]: domain-level info predicts 65% of source deps
 } as const;
 
 // ── Code Structure Signals [2][6] ──
@@ -90,6 +91,14 @@ export const ARANDA_SIGNALS = {
   forgottenPattern: 0.2, // burst + 12mo silence
   timelineDiscontinuity: 0.15, // events with no electronic trace
   brokenIssueLink: 0.1, // link exists but broken
+} as const;
+
+// ── Co-Change / Domain Coupling Signals [5][9] ──
+
+export const CO_CHANGE_SIGNALS = {
+  frequentCoChange: 0.15, // Ying [5]: co-changed with frozen file 10+ times
+  sameBranchFrozen: 0.15, // Ying [5]: branch-level theory coherence
+  sharedDomainVariables: 0.15, // Aryani [9]: domain coupling predicts architectural deps
 } as const;
 
 // ── Recovery level thresholds ──

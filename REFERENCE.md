@@ -173,6 +173,14 @@ bug record to source code. The inverse is equally true — many commits referenc
 issues with full context sitting in the tracker. Fetching this context moves
 gitwise from Level 1 to Level 2–3 recovery.
 
+**Domain coupling validation:** Aryani et al. [9] demonstrated that domain-level
+information — the business meaning of what components do, what data fields they
+share — predicts 65% of source code dependencies and 77% of database dependencies
+*without accessing source code*. Issue tracker context ("Stripe race condition",
+"Safari iOS null string") is exactly this kind of domain-level signal. When gitwise
+enriches a commit with its issue body, it is recovering domain coupling information
+that predicts real architectural dependencies.
+
 **Platform support:**
 
 | Platform | API | What gitwise fetches |
@@ -286,15 +294,19 @@ the score recalculates from full history whenever new evidence arrives.
 | Timeline discontinuity (events with no electronic trace) | +0.15 |
 | Link from commit to issue exists but broken | +0.10 |
 
-#### Co-Change Signals — from Ying et al. [5]
+#### Co-Change Signals — from Ying et al. [5] and Aryani et al. [9]
 | Signal | Weight | Rationale |
 |---|---|---|
-| File changed together with frozen file 10+ times | +0.15 | Cross-language/cross-platform dependency |
-| File part of same branch as another frozen decision | +0.15 | Branch-level theory coherence |
+| File changed together with frozen file 10+ times | +0.15 | Cross-language/cross-platform dependency [5] |
+| File part of same branch as another frozen decision | +0.15 | Branch-level theory coherence [5] |
+| Components share domain variables (issue labels, feature scope) | +0.15 | Domain coupling predicts architectural dependency [9] |
 
 Ying et al. [5] showed that files changed together frequently reveal dependencies
 that static analysis cannot find — cross-language, duplicate code bases, generated
-files. gitwise captures these in branch manifests and co-change signals.
+files. Aryani et al. [9] strengthened this: domain-level coupling (shared business
+concepts) predicts 65% of source code dependencies even without static analysis —
+critical for hybrid/legacy systems. gitwise captures both via branch manifests,
+co-change signals, and domain context from issue enrichment.
 
 **Combined formula:**
 ```
@@ -414,8 +426,11 @@ Stored permanently, even after branch deletion:
 
 **Academic grounding:** Ying et al. [5] showed cross-language and duplicate
 codebase dependencies are the most "surprising" and hardest to find by static
-analysis — yet most valuable. Branch manifests are precisely the mechanism for
-capturing these class of decisions before the branch is deleted.
+analysis — yet most valuable. Aryani et al. [9] validated this further:
+domain-based coupling predicts 77% of database dependencies in hybrid/legacy
+systems where static analysis fails entirely. Branch manifests are precisely the
+mechanism for capturing both structural and domain-level decisions before the
+branch is deleted.
 
 Retroactive recovery for already-deleted branches:
 ```bash
@@ -540,7 +555,7 @@ gitwise init --full-history
 - [ ] Graph + PageRank for structural importance [5]
 - [ ] Theory gap detection: timeline discontinuities + author churn [2][3]
 - [ ] "Forgotten" pattern: burst → silence without resolution [3]
-- [ ] Co-change signal: frequently co-changed with frozen file [5]
+- [ ] Co-change signal: frequently co-changed with frozen file [5][9]
 - [ ] Recovery level tagging: L1 / L2 / L3 per entry [3]
 
 ### Phase 3 — MCP Server + CLI
@@ -555,7 +570,7 @@ gitwise init --full-history
 - [ ] `gitwise override` with mandatory reason
 - [ ] Watch mode on overridden functions [8]
 - [ ] Time-boxed override + expiry prompt
-- [ ] Post-merge hook for branch snapshot [5]
+- [ ] Post-merge hook for branch snapshot [5][9]
 - [ ] `gitwise recover-branch-context`
 - [ ] Merge conflict loss detector
 
@@ -583,6 +598,7 @@ gitwise is defensible at every layer:
 | Program decay = modification without theory grasp | Naur [2] |
 | Past defects + incident links best predict future risk | Knab et al. [7] |
 | Temporal + spatial locality are real and measurable | Kim et al. [8] |
+| Domain coupling predicts dependencies without source analysis | Aryani et al. [9] |
 
 ---
 
@@ -607,16 +623,16 @@ gitwise is defensible at every layer:
 | Local / offline | ✅ | partial | ❌ | ✅ |
 | MCP + CLI fallback | ✅ | ✅ | ❌ | ✅ |
 | AST-level change analysis [6] | ❌ | ❌ | ❌ | ✅ |
-| Issue tracker enrichment [3] | ❌ | ❌ | ❌ | ✅ |
+| Issue tracker enrichment [3][9] | ❌ | ❌ | ❌ | ✅ |
 | Won't Fix / By Design signal | ❌ | ❌ | ❌ | ✅ |
 | Freeze score per function | ❌ | ❌ | ❌ | ✅ |
 | Intent extraction (why not what) | ❌ | ❌ | ❌ | ✅ |
-| Co-change dependency protection [5] | ❌ | ❌ | ❌ | ✅ |
+| Co-change dependency protection [5][9] | ❌ | ❌ | ❌ | ✅ |
 | Theory gap detection [3] | ❌ | ❌ | ❌ | ✅ |
 | Recovery level labeling | ❌ | ❌ | ❌ | ✅ |
 | Decision protection / pre-edit inject | ❌ | ❌ | ❌ | ✅ |
 | Legacy codebase safety | ❌ | ❌ | ❌ | ✅ |
-| Branch context preservation [5] | ❌ | ❌ | ❌ | ✅ |
+| Branch context preservation [5][9] | ❌ | ❌ | ❌ | ✅ |
 | Override audit trail | ❌ | ❌ | ❌ | ✅ |
 | Dynamic event sourcing [8] | ❌ | ❌ | partial | ✅ |
 
@@ -678,3 +694,14 @@ gitwise is defensible at every layer:
     four locality types (temporal, spatial, changed-entity, new-entity),
     dynamic adaptation over static models, event sourcing design rationale,
     watch mode design, 10% cache → 73–95% fault coverage.
+
+[9] Amir Aryani, Fabrizio Perin, Mircea Lungu, Andrea Caracciolo, Oscar Nierstrasz (2014).
+    *Predicting Dependences Using Domain-Based Coupling.*
+    Journal of Software: Evolution and Process, 26(12), 1126–1157.
+    https://doi.org/10.1002/smr.1598
+    Source for: domain-level coupling predicts 65% of source code dependencies
+    and 77% of database dependencies without source access. Validates issue
+    enrichment as domain-level signal recovery, branch context preservation
+    for hybrid/legacy codebases, and co-change signals for components with
+    no static dependency but shared domain variables. Average accuracy 0.73,
+    93% of queries return at least one correct architectural dependency.
