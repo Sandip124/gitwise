@@ -95,9 +95,15 @@ Open the repo in Claude Code. It will automatically:
 
 | Tool | Description |
 |------|-------------|
-| `get_file_decisions` | Get decision manifest for a file — freeze scores, intent history, recovery levels |
-| `get_freeze_score` | Get score + signal breakdown for a specific function |
+| `get_file_decisions` | Decision manifest for a file — freeze scores, intent history, recovery levels, override status |
+| `get_freeze_score` | Score + signal breakdown for a specific function |
+| `get_function_history` | Full chronological decision timeline for a function |
+| `get_theory_gaps` | Functions with unrecoverable rationale (inactive authors, timeline gaps) |
+| `get_branch_context` | Branch merge history — what was migrated and why |
 | `search_decisions` | Search past decisions by keyword across the entire repo |
+| `create_override` | Override a frozen function (user approves in Claude Code UI) |
+
+**MCP Resource:** `wisegit://manifest/{filePath}` — decision manifest as auto-discoverable resource
 
 ## CLI Commands
 

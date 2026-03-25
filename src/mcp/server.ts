@@ -5,6 +5,10 @@ import { getFileDecisions } from "./tools/get-file-decisions.js";
 import { getFreezeScoreForFunction } from "./tools/get-freeze-score.js";
 import { searchDecisions } from "./tools/search-decisions.js";
 import { createOverrideFromMcp } from "./tools/create-override.js";
+import { getFunctionHistory } from "./tools/get-function-history.js";
+import { getTheoryGaps } from "./tools/get-theory-gaps.js";
+import { getBranchContext } from "./tools/get-branch-context.js";
+import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { logger } from "../shared/logger.js";
 import { GitwiseError } from "../shared/errors.js";
 
@@ -199,6 +203,96 @@ export function createMcpServer(db: Database.Database): McpServer {
           isError: true,
         };
       }
+    }
+  );
+
+  // ── get_function_history ──
+  server.tool(
+    "get_function_history",
+    "Get the full chronological decision timeline for a specific function. Shows every event: creation, changes, overrides, issue enrichments.",
+    {
+      filePath: safeFilePath.describe("Path to the file containing the function"),
+      functionName: safeFunctionName.describe("Name of the function"),
+      repoPath: safeRepoPath.describe("Absolute path to the git repository root"),
+    },
+    async ({ filePath, functionName, repoPath }) => {
+      try {
+        const result = getFunctionHistory(db, filePath, functionName, repoPath);
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (err) {
+        logger.error("get_function_history failed", err);
+        return {
+          content: [{ type: "text" as const, text: sanitizeError(err) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // ── get_theory_gaps ──
+  server.tool(
+    "get_theory_gaps",
+    "Get functions in a file where the original decision rationale may be unrecoverable (primary author inactive, timeline gaps). These need extra caution.",
+    {
+      filePath: safeFilePath.describe("Path to the file to check"),
+      repoPath: safeRepoPath.describe("Absolute path to the git repository root"),
+    },
+    async ({ filePath, repoPath }) => {
+      try {
+        const result = getTheoryGaps(db, filePath, repoPath);
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (err) {
+        logger.error("get_theory_gaps failed", err);
+        return {
+          content: [{ type: "text" as const, text: sanitizeError(err) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // ── get_branch_context ──
+  server.tool(
+    "get_branch_context",
+    "Get branch merge history — what branches were merged and what they changed. Useful for understanding migrations and cross-platform decisions.",
+    {
+      repoPath: safeRepoPath.describe("Absolute path to the git repository root"),
+      filePath: safeFilePath
+        .optional()
+        .describe("Filter to branches that modified this file"),
+    },
+    async ({ repoPath, filePath }) => {
+      try {
+        const result = getBranchContext(db, repoPath, filePath);
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (err) {
+        logger.error("get_branch_context failed", err);
+        return {
+          content: [{ type: "text" as const, text: sanitizeError(err) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // ── Resource template: decision manifests ──
+  // Exposes file manifests as MCP resources — auto-discoverable by clients
+  server.resource(
+    "file-manifest",
+    new ResourceTemplate("wisegit://manifest/{+filePath}", {
+      list: undefined,
+      complete: {
+        filePath: () => [], // No autocomplete for now
+      },
+    }),
+    { mimeType: "text/plain", description: "Decision manifest for a source file" },
+    (uri, variables) => {
+      const filePath = variables.filePath as string;
+      if (!filePath || filePath.includes("..") || filePath.includes("\0")) {
+        return { contents: [{ uri: uri.toString(), text: "Invalid file path." }] };
+      }
+      const result = getFileDecisions(db, filePath);
+      return { contents: [{ uri: uri.toString(), text: result.manifest }] };
     }
   );
 
