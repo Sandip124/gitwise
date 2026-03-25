@@ -21,8 +21,9 @@ decisions using git history. Before modifying any file, the AI agent MUST:
 1. **ALWAYS call \`get_file_decisions\`** before editing any source file to see
    the decision manifest — which functions are FROZEN, STABLE, or OPEN.
 
-2. **NEVER modify FROZEN functions** (score ≥ 0.80) without explicit user
-   approval. These contain verified, intentional decisions backed by git history.
+2. **NEVER modify FROZEN functions** (score ≥ 0.80) without an override.
+   If the user asks you to modify a frozen function, call \`create_override\`
+   first with a clear reason. The user will approve the override in the UI.
 
 3. **Exercise caution with STABLE functions** (score 0.50–0.79). Review the
    intent history and explain why the change is safe before proceeding.
@@ -34,6 +35,9 @@ decisions using git history. Before modifying any file, the AI agent MUST:
 
 6. If you need to understand why code exists the way it does, call
    \`search_decisions\` with relevant keywords to find past decision context.
+
+7. When the manifest shows **OVERRIDE**, the function is under active
+   modification — proceed but note the override reason and expiry.
 `.trim();
 
 function safeToWrite(filePath: string): boolean {

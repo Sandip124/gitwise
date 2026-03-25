@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { getFileDecisions } from "./tools/get-file-decisions.js";
 import { getFreezeScoreForFunction } from "./tools/get-freeze-score.js";
 import { searchDecisions } from "./tools/search-decisions.js";
+import { createOverrideFromMcp } from "./tools/create-override.js";
 import { logger } from "../shared/logger.js";
 import { GitwiseError } from "../shared/errors.js";
 
@@ -161,6 +162,40 @@ export function createMcpServer(db: Database.Database): McpServer {
           content: [
             { type: "text" as const, text: sanitizeError(err) },
           ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // ── create_override ──
+  server.tool(
+    "create_override",
+    "Request an override for a FROZEN or STABLE function so it can be modified. The user MUST approve this action. Provide a clear reason why the override is needed. The override is recorded in the audit trail permanently.",
+    {
+      filePath: safeFilePath.describe("Path to the file containing the function"),
+      functionName: safeFunctionName.describe("Name of the function to override"),
+      reason: z
+        .string()
+        .min(10, "Reason must be at least 10 characters — explain why the override is needed")
+        .max(500)
+        .describe("Why this override is necessary (mandatory, min 10 chars)"),
+      expires: z
+        .string()
+        .regex(/^\d+(d|h|m)$/, "Duration format: 7d, 24h, 30m")
+        .optional()
+        .describe("Auto-expire after duration (e.g., 7d, 24h). Omit for permanent."),
+    },
+    async ({ filePath, functionName, reason, expires }) => {
+      try {
+        const result = createOverrideFromMcp(db, filePath, functionName, reason, expires);
+        return {
+          content: [{ type: "text" as const, text: result }],
+        };
+      } catch (err) {
+        logger.error("create_override failed", err);
+        return {
+          content: [{ type: "text" as const, text: sanitizeError(err) }],
           isError: true,
         };
       }
