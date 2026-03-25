@@ -1,16 +1,16 @@
 CREATE TABLE IF NOT EXISTS freeze_scores (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              TEXT PRIMARY KEY,
     repo_path       TEXT NOT NULL,
     function_id     TEXT NOT NULL UNIQUE,
     file_path       TEXT NOT NULL,
     function_name   TEXT NOT NULL,
-    score           REAL NOT NULL CHECK (score >= 0 AND score <= 1),
-    recovery_level  VARCHAR(2) NOT NULL,
-    signal_breakdown JSONB DEFAULT '{}',
+    score           REAL NOT NULL,
+    recovery_level  TEXT NOT NULL,
+    signal_breakdown TEXT DEFAULT '{}',
     pagerank        REAL DEFAULT 0,
-    theory_gap      BOOLEAN DEFAULT FALSE,
-    last_recomputed TIMESTAMPTZ DEFAULT NOW(),
-    invalidated     BOOLEAN DEFAULT FALSE
+    theory_gap      INTEGER DEFAULT 0,
+    last_recomputed TEXT DEFAULT (datetime('now')),
+    invalidated     INTEGER DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_freeze_repo ON freeze_scores(repo_path);

@@ -1,4 +1,5 @@
-import pg from "pg";
+import Database from "better-sqlite3";
+import { randomUUID } from "node:crypto";
 import { DecisionEvent, EventType } from "../core/types.js";
 
 /**
@@ -6,129 +7,133 @@ import { DecisionEvent, EventType } from "../core/types.js";
  * Per Kim et al. [8]: dynamic event sourcing adapts to new fault distributions.
  */
 export class EventStore {
-  constructor(private pool: pg.Pool) {}
+  constructor(private db: Database.Database) {}
 
-  async appendEvents(events: DecisionEvent[]): Promise<void> {
+  appendEvents(events: DecisionEvent[]): void {
     if (events.length === 0) return;
 
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
+    const insert = this.db.prepare(
+      `INSERT INTO decision_events
+        (id, repo_path, commit_sha, event_type, function_id, file_path,
+         function_name, commit_message, author, authored_at,
+         classification, intent, intent_source, confidence, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
 
-      for (const event of events) {
-        await client.query(
-          `INSERT INTO decision_events
-            (repo_path, commit_sha, event_type, function_id, file_path,
-             function_name, commit_message, author, authored_at,
-             classification, intent, intent_source, confidence, metadata)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-          [
-            event.repoPath,
-            event.commitSha,
-            event.eventType,
-            event.functionId,
-            event.filePath,
-            event.functionName,
-            event.commitMessage,
-            event.author,
-            event.authoredAt,
-            event.classification,
-            event.intent,
-            event.intentSource,
-            event.confidence,
-            JSON.stringify(event.metadata),
-          ]
+    const insertMany = this.db.transaction((evts: DecisionEvent[]) => {
+      for (const event of evts) {
+        insert.run(
+          randomUUID(),
+          event.repoPath,
+          event.commitSha,
+          event.eventType,
+          event.functionId,
+          event.filePath,
+          event.functionName,
+          event.commitMessage,
+          event.author,
+          event.authoredAt?.toISOString() ?? null,
+          event.classification,
+          event.intent,
+          event.intentSource,
+          event.confidence,
+          JSON.stringify(event.metadata)
         );
       }
+    });
 
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+    insertMany(events);
   }
 
-  async getEventsForFunction(
+  getEventsForFunction(
     functionId: string,
     repoPath?: string
-  ): Promise<DecisionEvent[]> {
-    const params: unknown[] = [functionId];
-    let where = "WHERE function_id = $1";
+  ): DecisionEvent[] {
     if (repoPath) {
-      where += " AND repo_path = $2";
-      params.push(repoPath);
+      return this.db
+        .prepare(
+          `SELECT * FROM decision_events
+           WHERE function_id = ? AND repo_path = ?
+           ORDER BY authored_at ASC, created_at ASC`
+        )
+        .all(functionId, repoPath)
+        .map(rowToEvent);
     }
 
-    const { rows } = await this.pool.query(
-      `SELECT * FROM decision_events ${where} ORDER BY authored_at ASC, created_at ASC`,
-      params
-    );
-    return rows.map(rowToEvent);
+    return this.db
+      .prepare(
+        `SELECT * FROM decision_events
+         WHERE function_id = ?
+         ORDER BY authored_at ASC, created_at ASC`
+      )
+      .all(functionId)
+      .map(rowToEvent);
   }
 
-  async getEventsForFile(
+  getEventsForFile(
     filePath: string,
     repoPath?: string
-  ): Promise<DecisionEvent[]> {
-    const params: unknown[] = [filePath];
-    let where = "WHERE file_path = $1";
+  ): DecisionEvent[] {
     if (repoPath) {
-      where += " AND repo_path = $2";
-      params.push(repoPath);
+      return this.db
+        .prepare(
+          `SELECT * FROM decision_events
+           WHERE file_path = ? AND repo_path = ?
+           ORDER BY authored_at ASC, created_at ASC`
+        )
+        .all(filePath, repoPath)
+        .map(rowToEvent);
     }
 
-    const { rows } = await this.pool.query(
-      `SELECT * FROM decision_events ${where} ORDER BY authored_at ASC, created_at ASC`,
-      params
-    );
-    return rows.map(rowToEvent);
+    return this.db
+      .prepare(
+        `SELECT * FROM decision_events
+         WHERE file_path = ?
+         ORDER BY authored_at ASC, created_at ASC`
+      )
+      .all(filePath)
+      .map(rowToEvent);
   }
 
-  async getEventsForCommit(commitSha: string): Promise<DecisionEvent[]> {
-    const { rows } = await this.pool.query(
-      `SELECT * FROM decision_events WHERE commit_sha = $1 ORDER BY created_at ASC`,
-      [commitSha]
-    );
-    return rows.map(rowToEvent);
+  getDistinctFunctionIds(repoPath: string): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT DISTINCT function_id FROM decision_events
+           WHERE repo_path = ? AND function_id IS NOT NULL`
+        )
+        .all(repoPath) as { function_id: string }[]
+    ).map((r) => r.function_id);
   }
 
-  async getDistinctFunctionIds(repoPath: string): Promise<string[]> {
-    const { rows } = await this.pool.query(
-      `SELECT DISTINCT function_id FROM decision_events
-       WHERE repo_path = $1 AND function_id IS NOT NULL`,
-      [repoPath]
-    );
-    return rows.map((r: { function_id: string }) => r.function_id);
-  }
-
-  async hasEventsForRepo(repoPath: string): Promise<boolean> {
-    const { rows } = await this.pool.query(
-      `SELECT 1 FROM decision_events WHERE repo_path = $1 LIMIT 1`,
-      [repoPath]
-    );
-    return rows.length > 0;
+  hasEventsForRepo(repoPath: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT 1 FROM decision_events WHERE repo_path = ? LIMIT 1`
+      )
+      .get(repoPath);
+    return row !== undefined;
   }
 }
 
-function rowToEvent(row: Record<string, unknown>): DecisionEvent {
+function rowToEvent(row: unknown): DecisionEvent {
+  const r = row as Record<string, unknown>;
   return {
-    id: row.id as string,
-    repoPath: row.repo_path as string,
-    commitSha: row.commit_sha as string,
-    eventType: row.event_type as EventType,
-    functionId: row.function_id as string | null,
-    filePath: row.file_path as string,
-    functionName: row.function_name as string | null,
-    commitMessage: row.commit_message as string | null,
-    author: row.author as string | null,
-    authoredAt: row.authored_at ? new Date(row.authored_at as string) : null,
-    classification: row.classification as DecisionEvent["classification"],
-    intent: row.intent as string | null,
-    intentSource: row.intent_source as DecisionEvent["intentSource"],
-    confidence: row.confidence as DecisionEvent["confidence"],
-    metadata: (row.metadata as Record<string, unknown>) ?? {},
-    createdAt: row.created_at ? new Date(row.created_at as string) : undefined,
+    id: r.id as string,
+    repoPath: r.repo_path as string,
+    commitSha: r.commit_sha as string,
+    eventType: r.event_type as EventType,
+    functionId: r.function_id as string | null,
+    filePath: r.file_path as string,
+    functionName: r.function_name as string | null,
+    commitMessage: r.commit_message as string | null,
+    author: r.author as string | null,
+    authoredAt: r.authored_at ? new Date(r.authored_at as string) : null,
+    classification: r.classification as DecisionEvent["classification"],
+    intent: r.intent as string | null,
+    intentSource: r.intent_source as DecisionEvent["intentSource"],
+    confidence: r.confidence as DecisionEvent["confidence"],
+    metadata: r.metadata ? JSON.parse(r.metadata as string) : {},
+    createdAt: r.created_at ? new Date(r.created_at as string) : undefined,
   };
 }

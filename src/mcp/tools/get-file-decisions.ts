@@ -1,12 +1,8 @@
-import pg from "pg";
+import Database from "better-sqlite3";
 import { EventStore } from "../../db/event-store.js";
 import { FreezeStore } from "../../db/freeze-store.js";
 import { getFreezeStatus } from "../../core/recovery-levels.js";
-import {
-  DecisionEvent,
-  FreezeScore,
-  RecoveryLevel,
-} from "../../core/types.js";
+import { DecisionEvent, FreezeScore, RecoveryLevel } from "../../core/types.js";
 
 export interface FileDecisionsResult {
   filePath: string;
@@ -23,25 +19,17 @@ interface FunctionSummary {
   decisions: { intent: string; confidence: string; commitSha: string }[];
 }
 
-/**
- * Get decision manifest for a file.
- * This is the primary tool Claude Code calls before editing a file.
- */
-export async function getFileDecisions(
-  pool: pg.Pool,
+export function getFileDecisions(
+  db: Database.Database,
   filePath: string,
   repoPath?: string
-): Promise<FileDecisionsResult> {
-  const eventStore = new EventStore(pool);
-  const freezeStore = new FreezeStore(pool);
+): FileDecisionsResult {
+  const eventStore = new EventStore(db);
+  const freezeStore = new FreezeStore(db);
 
-  // Get all events for this file
-  const events = await eventStore.getEventsForFile(filePath, repoPath);
+  const events = eventStore.getEventsForFile(filePath, repoPath);
+  const scores = freezeStore.getScoresForFile(filePath, repoPath);
 
-  // Get freeze scores for this file
-  const scores = await freezeStore.getScoresForFile(filePath, repoPath);
-
-  // Group events by function
   const eventsByFunction = new Map<string, DecisionEvent[]>();
   for (const event of events) {
     if (!event.functionId) continue;
@@ -50,7 +38,6 @@ export async function getFileDecisions(
     eventsByFunction.set(event.functionId, existing);
   }
 
-  // Build function summaries
   const scoreMap = new Map<string, FreezeScore>(
     scores.map((s) => [s.functionId, s])
   );
@@ -62,7 +49,6 @@ export async function getFileDecisions(
     const level = score?.recoveryLevel ?? RecoveryLevel.L3;
     const status = getFreezeStatus(level);
 
-    // Get unique decisions (deduplicate by commit)
     const seenCommits = new Set<string>();
     const decisions: FunctionSummary["decisions"] = [];
     for (const event of fnEvents.reverse()) {
@@ -73,11 +59,14 @@ export async function getFileDecisions(
         confidence: event.confidence ?? "UNKNOWN",
         commitSha: event.commitSha.slice(0, 7),
       });
-      if (decisions.length >= 5) break; // Limit to 5 most recent
+      if (decisions.length >= 5) break;
     }
 
     functions.push({
-      functionName: score?.functionName ?? functionId.split("::function:")[1] ?? functionId,
+      functionName:
+        score?.functionName ??
+        functionId.split("::function:")[1] ??
+        functionId,
       functionId,
       freezeScore: score?.score ?? 0,
       recoveryLevel: level,
@@ -86,12 +75,9 @@ export async function getFileDecisions(
     });
   }
 
-  // Sort: frozen first, then by score descending
   functions.sort((a, b) => b.freezeScore - a.freezeScore);
 
-  // Format manifest
   const manifest = formatManifest(filePath, functions);
-
   return { filePath, manifest, functions };
 }
 
@@ -105,7 +91,7 @@ function formatManifest(
 
   const lines: string[] = [
     `[DECISION MANIFEST: ${filePath}]`,
-    "━".repeat(50),
+    "\u2501".repeat(50),
   ];
 
   for (const fn of functions) {
@@ -115,17 +101,13 @@ function formatManifest(
     );
 
     for (const decision of fn.decisions) {
-      lines.push(
-        `  - ${decision.intent}`
-      );
-      lines.push(
-        `    ${decision.confidence} — commit ${decision.commitSha}`
-      );
+      lines.push(`  - ${decision.intent}`);
+      lines.push(`    ${decision.confidence} \u2014 commit ${decision.commitSha}`);
     }
 
     lines.push("");
   }
 
-  lines.push("━".repeat(50));
+  lines.push("\u2501".repeat(50));
   return lines.join("\n");
 }

@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { getPool, closePool } from "../../db/pool.js";
+import { getDb, closeDb } from "../../db/database.js";
 import { getFileDecisions } from "../../mcp/tools/get-file-decisions.js";
 import { logger } from "../../shared/logger.js";
 
@@ -8,10 +8,10 @@ export async function auditCommand(
   options: { path?: string }
 ): Promise<void> {
   const repoPath = options.path ? resolve(options.path) : undefined;
-  const pool = getPool();
+  const db = getDb();
 
   try {
-    const result = await getFileDecisions(pool, filePath, repoPath);
+    const result = getFileDecisions(db, filePath, repoPath);
     console.log(result.manifest);
   } catch (err) {
     logger.error("Audit failed", err);
@@ -20,6 +20,6 @@ export async function auditCommand(
     );
     process.exit(1);
   } finally {
-    await closePool();
+    closeDb();
   }
 }

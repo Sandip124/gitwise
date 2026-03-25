@@ -51,20 +51,19 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "better-sqlite3": "^12.8.0",
     "commander": "^14.0.3",
     "graphology": "^0.26.0",
     "graphology-metrics": "^2.4.0",
     "ollama": "^0.6.3",
-    "pg": "^8.20.0",
-    "pgvector": "^0.2.1",
     "simple-git": "^3.33.0",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "^0.25.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.5.0",
-    "@types/pg": "^8.20.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vitest": "^4.1.1"

@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { getPool, closePool } from "../../db/pool.js";
+import { getDb, closeDb } from "../../db/database.js";
 import { EventStore } from "../../db/event-store.js";
 import { makeFunctionId } from "../../core/types.js";
 import { logger } from "../../shared/logger.js";
@@ -9,21 +9,19 @@ export async function historyCommand(
   options: { path?: string; file?: string }
 ): Promise<void> {
   const repoPath = options.path ? resolve(options.path) : undefined;
-  const pool = getPool();
+  const db = getDb();
 
   try {
-    const eventStore = new EventStore(pool);
+    const eventStore = new EventStore(db);
 
-    // If --file is provided, construct the function ID
     const filePath = options.file;
     let events;
 
     if (filePath) {
       const functionId = makeFunctionId(filePath, target);
-      events = await eventStore.getEventsForFunction(functionId, repoPath);
+      events = eventStore.getEventsForFunction(functionId, repoPath);
     } else {
-      // Try to find events matching the target as a file path
-      events = await eventStore.getEventsForFile(target, repoPath);
+      events = eventStore.getEventsForFile(target, repoPath);
     }
 
     if (events.length === 0) {
@@ -32,7 +30,7 @@ export async function historyCommand(
     }
 
     console.log(`Decision History: ${target}`);
-    console.log("─".repeat(50));
+    console.log("\u2500".repeat(50));
 
     for (const event of events) {
       const date = event.authoredAt
@@ -52,7 +50,7 @@ export async function historyCommand(
       console.log(`  Author:   ${event.author ?? "unknown"}`);
     }
 
-    console.log(`\n${"─".repeat(50)}`);
+    console.log(`\n${"\u2500".repeat(50)}`);
     console.log(`Total events: ${events.length}`);
   } catch (err) {
     logger.error("History failed", err);
@@ -61,6 +59,6 @@ export async function historyCommand(
     );
     process.exit(1);
   } finally {
-    await closePool();
+    closeDb();
   }
 }

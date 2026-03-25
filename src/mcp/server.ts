@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import pg from "pg";
+import Database from "better-sqlite3";
 import { getFileDecisions } from "./tools/get-file-decisions.js";
 import { getFreezeScoreForFunction } from "./tools/get-freeze-score.js";
 import { searchDecisions } from "./tools/search-decisions.js";
@@ -49,7 +49,7 @@ function sanitizeError(err: unknown): string {
  * - get_freeze_score: score + signal breakdown for a function
  * - search_decisions: keyword search across all decisions
  */
-export function createMcpServer(pool: pg.Pool): McpServer {
+export function createMcpServer(db: Database.Database): McpServer {
   const server = new McpServer({
     name: "gitwise",
     version: "0.1.0",
@@ -67,7 +67,7 @@ export function createMcpServer(pool: pg.Pool): McpServer {
     },
     async ({ filePath, repoPath }) => {
       try {
-        const result = await getFileDecisions(pool, filePath, repoPath);
+        const result = getFileDecisions(db, filePath, repoPath);
         return {
           content: [{ type: "text" as const, text: result.manifest }],
         };
@@ -98,8 +98,8 @@ export function createMcpServer(pool: pg.Pool): McpServer {
     },
     async ({ filePath, functionName, repoPath }) => {
       try {
-        const result = await getFreezeScoreForFunction(
-          pool,
+        const result = getFreezeScoreForFunction(
+          db,
           filePath,
           functionName,
           repoPath
@@ -132,7 +132,7 @@ export function createMcpServer(pool: pg.Pool): McpServer {
     },
     async ({ query, repoPath, limit }) => {
       try {
-        const results = await searchDecisions(pool, query, repoPath, limit);
+        const results = searchDecisions(db, query, repoPath, limit);
 
         if (results.length === 0) {
           return {

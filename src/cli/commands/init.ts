@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { getPool, closePool } from "../../db/pool.js";
+import { getDb, closeDb } from "../../db/database.js";
 import { runInitPipeline } from "../../pipeline/init-pipeline.js";
 import { logger } from "../../shared/logger.js";
 
@@ -8,12 +8,12 @@ export async function initCommand(options: {
   path?: string;
 }): Promise<void> {
   const repoPath = resolve(options.path ?? process.cwd());
-  const pool = getPool();
+  const db = getDb();
 
   try {
     const result = await runInitPipeline({
       repoPath,
-      pool,
+      db,
       fullHistory: options.fullHistory,
       onProgress: (current, total, sha) => {
         if (current % 50 === 0 || current === total) {
@@ -37,6 +37,6 @@ export async function initCommand(options: {
     );
     process.exit(1);
   } finally {
-    await closePool();
+    closeDb();
   }
 }

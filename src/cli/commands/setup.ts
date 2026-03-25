@@ -7,14 +7,10 @@ import {
   lstatSync,
 } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { getPool, closePool } from "../../db/pool.js";
+import { getDb, closeDb } from "../../db/database.js";
 import { runMigrations } from "../../db/migrator.js";
 import { runInitPipeline } from "../../pipeline/init-pipeline.js";
 import { logger } from "../../shared/logger.js";
-import { redactDbUrl } from "../../shared/config.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = resolve(__filename, "..");
 
 const CLAUDE_MD_RULES = `
 ## gitwise — Decision Protection Rules
@@ -40,12 +36,8 @@ decisions using git history. Before modifying any file, the AI agent MUST:
    \`search_decisions\` with relevant keywords to find past decision context.
 `.trim();
 
-/**
- * Check that a path is not a symlink before writing.
- * Prevents symlink-based write redirection attacks.
- */
 function safeToWrite(filePath: string): boolean {
-  if (!existsSync(filePath)) return true; // New file — safe
+  if (!existsSync(filePath)) return true;
   try {
     const stat = lstatSync(filePath);
     return !stat.isSymbolicLink();
@@ -60,60 +52,26 @@ export async function setupCommand(options: {
   global?: boolean;
 }): Promise<void> {
   const repoPath = resolve(options.path ?? process.cwd());
-  const gitwisePath = resolve(__dirname, "../../../");
 
-  // Step 1: Verify it's a git repo
   console.log("Setting up gitwise...\n");
 
   if (!existsSync(resolve(repoPath, ".git"))) {
     console.error(`Error: ${repoPath} is not a git repository.`);
     process.exit(1);
   }
-  console.log(`  ✓ Git repository: ${repoPath}`);
+  console.log(`  \u2713 Git repository: ${repoPath}`);
 
-  // Step 2: Check Docker + PostgreSQL
-  const dbUrl =
-    process.env.DATABASE_URL ??
-    "postgresql://gitwise:gitwise@localhost:5433/gitwise";
+  // Initialize SQLite database (auto-creates ~/.gitwise/gitwise.db)
+  const db = getDb();
+  runMigrations(db);
+  console.log("  \u2713 Database ready (SQLite)");
 
-  let dbReady = false;
-  try {
-    const pool = getPool();
-    await pool.query("SELECT 1");
-    dbReady = true;
-    console.log("  ✓ PostgreSQL connected");
-  } catch {
-    // Redact credentials before logging
-    console.log("  ⚠ PostgreSQL not reachable at " + redactDbUrl(dbUrl));
-    console.log(
-      "    Run: docker compose -f <gitwise-path>/docker-compose.yml up -d"
-    );
-  }
-
-  // Step 3: Run migrations if DB is available
-  if (dbReady) {
-    try {
-      const pool = getPool();
-      await runMigrations(pool);
-      console.log("  ✓ Database migrations applied");
-    } catch (err) {
-      console.log(
-        "  ⚠ Migration failed: " +
-          (err instanceof Error ? err.message : String(err))
-      );
-    }
-  }
-
-  // Step 4: Create .mcp.json for Claude Code
-  // Use env var reference instead of literal DB URL to avoid credential leakage
+  // Create .mcp.json for Claude Code
   const mcpConfigPath = resolve(repoPath, ".mcp.json");
   const mcpConfig = {
     gitwise: {
       command: "npx",
       args: ["gitwise-mcp", "serve"],
-      env: {
-        DATABASE_URL: "${DATABASE_URL}",
-      },
     },
   };
 
@@ -121,63 +79,75 @@ export async function setupCommand(options: {
     if (existsSync(mcpConfigPath)) {
       try {
         const existing = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
-        if (typeof existing === "object" && existing !== null && !Array.isArray(existing)) {
+        if (
+          typeof existing === "object" &&
+          existing !== null &&
+          !Array.isArray(existing)
+        ) {
           existing.gitwise = mcpConfig.gitwise;
-          writeFileSync(mcpConfigPath, JSON.stringify(existing, null, 2) + "\n");
-          console.log("  ✓ Updated .mcp.json (merged with existing)");
+          writeFileSync(
+            mcpConfigPath,
+            JSON.stringify(existing, null, 2) + "\n"
+          );
+          console.log("  \u2713 Updated .mcp.json (merged with existing)");
         }
       } catch {
-        writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + "\n");
-        console.log("  ✓ Created .mcp.json");
+        writeFileSync(
+          mcpConfigPath,
+          JSON.stringify(mcpConfig, null, 2) + "\n"
+        );
+        console.log("  \u2713 Created .mcp.json");
       }
     } else {
-      writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + "\n");
-      console.log("  ✓ Created .mcp.json");
+      writeFileSync(
+        mcpConfigPath,
+        JSON.stringify(mcpConfig, null, 2) + "\n"
+      );
+      console.log("  \u2713 Created .mcp.json");
     }
   } else {
-    console.log("  ⚠ Skipped .mcp.json (path is a symlink)");
+    console.log("  \u26a0 Skipped .mcp.json (path is a symlink)");
   }
 
-  // Step 5: Add gitwise rules to CLAUDE.md
+  // Add gitwise rules to CLAUDE.md
   const claudeMdPath = resolve(repoPath, "CLAUDE.md");
   if (safeToWrite(claudeMdPath)) {
     if (existsSync(claudeMdPath)) {
       const existing = readFileSync(claudeMdPath, "utf-8");
       if (existing.includes("gitwise")) {
-        console.log("  ✓ CLAUDE.md already contains gitwise rules");
+        console.log("  \u2713 CLAUDE.md already contains gitwise rules");
       } else {
         writeFileSync(
           claudeMdPath,
           existing + "\n\n" + CLAUDE_MD_RULES + "\n"
         );
-        console.log("  ✓ Appended gitwise rules to CLAUDE.md");
+        console.log("  \u2713 Appended gitwise rules to CLAUDE.md");
       }
     } else {
       writeFileSync(claudeMdPath, CLAUDE_MD_RULES + "\n");
-      console.log("  ✓ Created CLAUDE.md with gitwise rules");
+      console.log("  \u2713 Created CLAUDE.md with gitwise rules");
     }
   } else {
-    console.log("  ⚠ Skipped CLAUDE.md (path is a symlink)");
+    console.log("  \u26a0 Skipped CLAUDE.md (path is a symlink)");
   }
 
-  // Step 6: Add .mcp.json to .gitignore (contains local paths)
+  // Add .mcp.json to .gitignore
   const gitignorePath = resolve(repoPath, ".gitignore");
   if (safeToWrite(gitignorePath) && existsSync(gitignorePath)) {
     const gitignore = readFileSync(gitignorePath, "utf-8");
     if (!gitignore.includes(".mcp.json")) {
       writeFileSync(gitignorePath, gitignore.trimEnd() + "\n.mcp.json\n");
-      console.log("  ✓ Added .mcp.json to .gitignore");
+      console.log("  \u2713 Added .mcp.json to .gitignore");
     }
   }
 
-  // Step 7: Index the repository
-  if (!options.skipIndex && dbReady) {
+  // Index the repository
+  if (!options.skipIndex) {
     console.log("\n  Indexing git history...");
     try {
-      const pool = getPool();
       const result = await runInitPipeline({
         repoPath,
-        pool,
+        db,
         fullHistory: true,
         onProgress: (current, total, sha) => {
           if (current % 50 === 0 || current === total) {
@@ -189,49 +159,45 @@ export async function setupCommand(options: {
       });
       process.stderr.write("\n");
       console.log(
-        `  ✓ Indexed: ${result.commitsProcessed} commits, ${result.eventsCreated} events, ${result.functionsTracked} functions`
+        `  \u2713 Indexed: ${result.commitsProcessed} commits, ${result.eventsCreated} events, ${result.functionsTracked} functions`
       );
     } catch (err) {
       console.log(
-        "  ⚠ Indexing failed: " +
+        "  \u26a0 Indexing failed: " +
           (err instanceof Error ? err.message : String(err))
       );
     }
-  } else if (!dbReady) {
-    console.log("\n  ⚠ Skipping indexing (database not available)");
   }
 
-  // Step 8: Register globally with Claude Code (optional)
-  // Uses execFileSync to avoid shell injection via path metacharacters
+  // Register globally with Claude Code (optional)
   if (options.global) {
     try {
-      execFileSync("claude", [
-        "mcp",
-        "add",
-        "gitwise",
-        "-e",
-        `DATABASE_URL=${dbUrl}`,
-        "--",
-        "npx",
-        "gitwise-mcp",
-        "serve",
-      ], { stdio: "pipe" });
-      console.log("  ✓ Registered gitwise globally with Claude Code");
+      execFileSync(
+        "claude",
+        ["mcp", "add", "gitwise", "--", "npx", "gitwise-mcp", "serve"],
+        { stdio: "pipe" }
+      );
+      console.log("  \u2713 Registered gitwise globally with Claude Code");
     } catch {
-      console.log("  ⚠ Could not register globally (claude CLI not found)");
       console.log(
-        "    Run manually: claude mcp add gitwise -e DATABASE_URL=... -- npx gitwise-mcp serve"
+        "  \u26a0 Could not register globally (claude CLI not found)"
+      );
+      console.log(
+        "    Run manually: claude mcp add gitwise -- npx gitwise-mcp serve"
       );
     }
   }
 
-  // Summary
-  console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log(
+    "\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
+  );
   console.log("Setup complete! Claude Code will now:");
   console.log("  1. See gitwise MCP tools (via .mcp.json)");
   console.log("  2. Follow decision protection rules (via CLAUDE.md)");
   console.log("  3. Call get_file_decisions before editing files");
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log(
+    "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
+  );
 
-  await closePool();
+  closeDb();
 }

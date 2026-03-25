@@ -1,17 +1,17 @@
 CREATE TABLE IF NOT EXISTS function_chunks (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              TEXT PRIMARY KEY,
     repo_path       TEXT NOT NULL,
     file_path       TEXT NOT NULL,
     function_name   TEXT NOT NULL,
     function_id     TEXT NOT NULL UNIQUE,
-    language        VARCHAR(30) NOT NULL,
+    language        TEXT NOT NULL,
     start_line      INTEGER NOT NULL,
     end_line        INTEGER NOT NULL,
-    content_hash    VARCHAR(64),
-    last_commit_sha VARCHAR(40),
-    last_modified   TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ DEFAULT NOW()
+    content_hash    TEXT,
+    last_commit_sha TEXT,
+    last_modified   TEXT,
+    created_at      TEXT DEFAULT (datetime('now')),
+    updated_at      TEXT DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_chunks_repo_file ON function_chunks(repo_path, file_path);

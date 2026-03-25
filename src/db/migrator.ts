@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import pg from "pg";
+import Database from "better-sqlite3";
 import { logger } from "../shared/logger.js";
 import { MigrationError } from "../shared/errors.js";
 
@@ -14,20 +14,20 @@ const MIGRATIONS_DIR = resolve(
  * Run all pending SQL migrations in order.
  * Tracks applied migrations in a _migrations table.
  */
-export async function runMigrations(pool: pg.Pool): Promise<string[]> {
+export function runMigrations(db: Database.Database): string[] {
   // Ensure _migrations tracking table exists
-  await pool.query(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
-      name VARCHAR(255) PRIMARY KEY,
-      applied_at TIMESTAMPTZ DEFAULT NOW()
+      name TEXT PRIMARY KEY,
+      applied_at TEXT DEFAULT (datetime('now'))
     )
   `);
 
   // Get already-applied migrations
-  const { rows: applied } = await pool.query(
-    "SELECT name FROM _migrations ORDER BY name"
-  );
-  const appliedSet = new Set(applied.map((r: { name: string }) => r.name));
+  const applied = db
+    .prepare("SELECT name FROM _migrations ORDER BY name")
+    .all() as { name: string }[];
+  const appliedSet = new Set(applied.map((r) => r.name));
 
   // Read migration files
   const files = readdirSync(MIGRATIONS_DIR)
@@ -44,14 +44,15 @@ export async function runMigrations(pool: pg.Pool): Promise<string[]> {
     const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf-8");
     logger.info(`Running migration: ${file}`);
 
+    const runMigration = db.transaction(() => {
+      db.exec(sql);
+      db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(file);
+    });
+
     try {
-      await pool.query("BEGIN");
-      await pool.query(sql);
-      await pool.query("INSERT INTO _migrations (name) VALUES ($1)", [file]);
-      await pool.query("COMMIT");
+      runMigration();
       executed.push(file);
     } catch (err) {
-      await pool.query("ROLLBACK");
       throw new MigrationError(
         `Migration ${file} failed: ${err instanceof Error ? err.message : String(err)}`
       );
@@ -65,18 +66,4 @@ export async function runMigrations(pool: pg.Pool): Promise<string[]> {
   }
 
   return executed;
-}
-
-// Allow running directly: tsx src/db/migrator.ts
-if (
-  process.argv[1] &&
-  (process.argv[1].endsWith("migrator.ts") ||
-    process.argv[1].endsWith("migrator.js"))
-) {
-  const { getPool, closePool } = await import("./pool.js");
-  try {
-    await runMigrations(getPool());
-  } finally {
-    await closePool();
-  }
 }

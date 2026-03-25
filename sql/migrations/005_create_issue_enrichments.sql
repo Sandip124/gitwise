@@ -1,16 +1,16 @@
 CREATE TABLE IF NOT EXISTS issue_enrichments (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              TEXT PRIMARY KEY,
     repo_path       TEXT NOT NULL,
-    commit_sha      VARCHAR(40) NOT NULL,
+    commit_sha      TEXT NOT NULL,
     issue_ref       TEXT NOT NULL,
-    platform        VARCHAR(20) NOT NULL,
+    platform        TEXT NOT NULL,
     issue_title     TEXT,
     issue_body      TEXT,
     issue_status    TEXT,
-    labels          JSONB DEFAULT '[]',
-    is_freeze_signal BOOLEAN DEFAULT FALSE,
+    labels          TEXT DEFAULT '[]',
+    is_freeze_signal INTEGER DEFAULT 0,
     freeze_boost    REAL DEFAULT 0,
-    fetched_at      TIMESTAMPTZ DEFAULT NOW()
+    fetched_at      TEXT DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_enrichments_commit ON issue_enrichments(commit_sha);

@@ -7,6 +7,8 @@
 
 When Claude Code (or any MCP-compatible agent) is about to edit a file, gitwise injects a **decision manifest** showing which functions are frozen, stable, or open — so the AI respects what was intentional, not just what compiles.
 
+**Zero config. Zero external services. Everything local.**
+
 ## The Problem
 
 LLMs have no concept of **intentional code**. A manually-tested fix and a broken stub look identical — both are just text. Real scenario:
@@ -20,7 +22,7 @@ LLMs have no concept of **intentional code**. A manually-tested fix and a broken
 ## How It Works
 
 ```
-Git History → Tree-sitter AST → Intent Extraction → PostgreSQL Event Store → MCP Tools
+Git History → Tree-sitter AST → Intent Extraction → SQLite Event Store → MCP Tools
 ```
 
 1. **Indexes your git history** — walks every commit, parses diffs at the AST level (function boundaries, not line counts)
@@ -47,56 +49,33 @@ OPEN:    FormatReceipt()  [score: 0.12] [Recovery: L3]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-- **FROZEN** (score ≥ 0.80): Do not modify without explicit user approval
-- **STABLE** (score 0.50–0.79): Proceed with caution, review intent first
+- **FROZEN** (score >= 0.80): Do not modify without explicit user approval
+- **STABLE** (score 0.50-0.79): Proceed with caution, review intent first
 - **OPEN** (score < 0.50): Safe to modify freely
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js ≥ 20
-- Docker (for PostgreSQL + pgvector)
+- Node.js >= 20
 
-### 1. Install
+That's it. No Docker, no PostgreSQL, no external services.
 
-```bash
-npm install -g gitwise-mcp
-```
-
-Or use without installing:
-
-```bash
-npx gitwise-mcp <command>
-```
-
-### 2. Start the Database
-
-```bash
-docker run -d --name gitwise-db \
-  -e POSTGRES_DB=gitwise \
-  -e POSTGRES_USER=gitwise \
-  -e POSTGRES_PASSWORD=gitwise \
-  -p 5433:5432 \
-  pgvector/pgvector:pg16
-```
-
-### 3. Set Up a Repository
+### 1. Set Up a Repository (one command)
 
 ```bash
 cd /path/to/your/repo
-DATABASE_URL="postgresql://gitwise:gitwise@localhost:5433/gitwise" \
-  npx gitwise-mcp setup
+npx gitwise-mcp setup
 ```
 
 This single command:
-- Runs database migrations
-- Indexes your entire git history
+- Creates a local SQLite database at `~/.gitwise/gitwise.db`
+- Indexes your entire git history (462 commits in ~13 seconds)
 - Creates `.mcp.json` for Claude Code auto-discovery
 - Creates `CLAUDE.md` rules that instruct AI to check before editing
 - Adds `.mcp.json` to `.gitignore`
 
-### 4. Done
+### 2. Done
 
 Open the repo in Claude Code. It will automatically:
 1. Start the gitwise MCP server (via `.mcp.json`)
@@ -114,26 +93,24 @@ Open the repo in Claude Code. It will automatically:
 ## CLI Commands
 
 ```bash
-gitwise init [--full-history] [--path <dir>]   # Index git history
-gitwise audit <file>                            # Show decision manifest
-gitwise history <target> [--file <path>]        # Show decision timeline
-gitwise serve                                   # Start MCP server (stdio)
 gitwise setup [--path <dir>] [--global]         # One-command repo setup
-gitwise hook install|uninstall                  # Manage git hooks
+gitwise init [--full-history] [--path <dir>]     # Index git history
+gitwise audit <file>                             # Show decision manifest
+gitwise history <target> [--file <path>]         # Show decision timeline
+gitwise serve                                    # Start MCP server (stdio)
+gitwise hook install|uninstall                   # Manage git hooks
 ```
 
 ## Configure for Claude Code
 
 ### Option A: Per-repo (recommended)
 
-Run `gitwise setup` in any repo. It creates `.mcp.json` automatically.
+Run `npx gitwise-mcp setup` in any repo. It creates `.mcp.json` automatically.
 
 ### Option B: Global registration
 
 ```bash
-claude mcp add gitwise \
-  -e DATABASE_URL=postgresql://gitwise:gitwise@localhost:5433/gitwise \
-  -- npx gitwise-mcp serve
+claude mcp add gitwise -- npx gitwise-mcp serve
 ```
 
 ### Option C: Manual `.mcp.json`
@@ -144,24 +121,21 @@ Create `.mcp.json` in your repo root:
 {
   "gitwise": {
     "command": "npx",
-    "args": ["gitwise-mcp", "serve"],
-    "env": {
-      "DATABASE_URL": "postgresql://gitwise:gitwise@localhost:5433/gitwise"
-    }
+    "args": ["gitwise-mcp", "serve"]
   }
 }
 ```
 
 ## Supported Languages
 
-| Language | Extensions | Status |
-|----------|-----------|--------|
-| C# | `.cs` | ✅ |
-| TypeScript | `.ts`, `.tsx` | ✅ |
-| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | ✅ |
-| Python | `.py` | ✅ |
+| Language | Extensions |
+|----------|-----------|
+| C# | `.cs` |
+| TypeScript | `.ts`, `.tsx` |
+| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` |
+| Python | `.py` |
 
-More languages can be added by creating a language config in `src/ast/languages/`.
+More languages can be added via Tree-sitter grammar configs in `src/ast/languages/`.
 
 ## Freeze Score Signals
 
@@ -200,11 +174,11 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
 └───────┼─────────────┼───────────────┼───────────┘
         │             │               │
 ┌───────▼─────────────▼───────────────▼───────────┐
-│  PostgreSQL + pgvector                          │
-│  ┌──────────────┐  ┌────────────┐  ┌─────────┐ │
-│  │decision_events│  │freeze_scores│  │embeddings│ │
-│  │(append-only) │  │(derived)   │  │(Phase 2)│ │
-│  └──────────────┘  └────────────┘  └─────────┘ │
+│  SQLite (~/.gitwise/gitwise.db)                 │
+│  ┌──────────────┐  ┌────────────┐               │
+│  │decision_events│  │freeze_scores│               │
+│  │(append-only) │  │(derived)   │               │
+│  └──────────────┘  └────────────┘               │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -212,7 +186,7 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `postgresql://gitwise:gitwise@localhost:5433/gitwise` | PostgreSQL connection string |
+| `GITWISE_DB_PATH` | `~/.gitwise/gitwise.db` | SQLite database path |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama server URL (Phase 2) |
 | `OLLAMA_CHAT_MODEL` | `llama3` | Model for intent extraction (Phase 2) |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Model for embeddings (Phase 2) |
@@ -221,11 +195,11 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
 
 - **Everything runs locally** — zero bytes sent to external services
 - **Append-only event store** — decisions are never deleted, only added
+- **SQLite database** stored at `~/.gitwise/gitwise.db` — no network exposure
 - MCP tool inputs validated with strict Zod schemas (path traversal protection, length limits)
-- Error messages sanitized before returning to MCP clients (no DB schema/credential leakage)
+- Error messages sanitized before returning to MCP clients
 - File writes check for symlinks before writing
-- `.gitwiserc.json` parsed with allowlisted keys only (no prototype pollution)
-- Database credentials never embedded in `.mcp.json` (uses env var references)
+- Config files parsed with allowlisted keys only (no prototype pollution)
 
 ## Roadmap
 

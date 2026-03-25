@@ -1,16 +1,19 @@
 import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
+import { homedir } from "node:os";
 import { logger } from "./logger.js";
 
 export interface GitwiseConfig {
-  databaseUrl: string;
+  dbPath: string;
   ollamaUrl: string;
   ollamaChatModel: string;
   ollamaEmbedModel: string;
 }
 
+const GITWISE_DIR = join(homedir(), ".gitwise");
+
 const DEFAULTS: GitwiseConfig = {
-  databaseUrl: "postgresql://gitwise:gitwise@localhost:5433/gitwise",
+  dbPath: join(GITWISE_DIR, "gitwise.db"),
   ollamaUrl: "http://localhost:11434",
   ollamaChatModel: "llama3",
   ollamaEmbedModel: "nomic-embed-text",
@@ -18,7 +21,7 @@ const DEFAULTS: GitwiseConfig = {
 
 // Allowlisted config keys — only these are accepted from .gitwiserc.json
 const ALLOWED_KEYS = new Set<keyof GitwiseConfig>([
-  "databaseUrl",
+  "dbPath",
   "ollamaUrl",
   "ollamaChatModel",
   "ollamaEmbedModel",
@@ -50,7 +53,6 @@ function pickValidConfig(raw: unknown): Partial<GitwiseConfig> {
 export function loadConfig(repoPath?: string): GitwiseConfig {
   if (cachedConfig) return cachedConfig;
 
-  // Start with defaults
   const config = { ...DEFAULTS };
 
   // Override from .gitwiserc.json if it exists
@@ -69,19 +71,12 @@ export function loadConfig(repoPath?: string): GitwiseConfig {
   }
 
   // Override from environment variables
-  if (process.env.DATABASE_URL) config.databaseUrl = process.env.DATABASE_URL;
+  if (process.env.GITWISE_DB_PATH) config.dbPath = process.env.GITWISE_DB_PATH;
   if (process.env.OLLAMA_URL) config.ollamaUrl = process.env.OLLAMA_URL;
   if (process.env.OLLAMA_CHAT_MODEL)
     config.ollamaChatModel = process.env.OLLAMA_CHAT_MODEL;
   if (process.env.OLLAMA_EMBED_MODEL)
     config.ollamaEmbedModel = process.env.OLLAMA_EMBED_MODEL;
-
-  // Warn if using default credentials
-  if (config.databaseUrl === DEFAULTS.databaseUrl && !process.env.DATABASE_URL) {
-    logger.warn(
-      "Using default database credentials. Set DATABASE_URL for production."
-    );
-  }
 
   cachedConfig = config;
   return config;
@@ -91,9 +86,6 @@ export function resetConfigCache(): void {
   cachedConfig = null;
 }
 
-/**
- * Redact password from a database URL for safe logging.
- */
-export function redactDbUrl(url: string): string {
-  return url.replace(/:\/\/([^:]+):([^@]+)@/, "://$1:***@");
+export function getGitwiseDir(): string {
+  return GITWISE_DIR;
 }

@@ -1,5 +1,4 @@
-import pg from "pg";
-import { EventStore } from "../../db/event-store.js";
+import Database from "better-sqlite3";
 
 export interface SearchResult {
   functionId: string;
@@ -12,53 +11,56 @@ export interface SearchResult {
 }
 
 /**
- * Escape ILIKE metacharacters to prevent wildcard injection.
+ * Escape LIKE metacharacters to prevent wildcard injection.
  */
-function escapeIlike(input: string): string {
-  return input.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+function escapeLike(input: string): string {
+  return input
+    .replace(/\\/g, "\\\\")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_");
 }
 
 /**
- * Search decisions by keyword (BM25-style text search).
- * Vector search will be added in Phase 2 with embeddings.
+ * Search decisions by keyword.
+ * Uses SQLite LIKE with ESCAPE clause for safe pattern matching.
  */
-export async function searchDecisions(
-  pool: pg.Pool,
+export function searchDecisions(
+  db: Database.Database,
   query: string,
   repoPath?: string,
   limit: number = 10
-): Promise<SearchResult[]> {
-  const safeQuery = escapeIlike(query);
-  const params: unknown[] = [`%${safeQuery}%`];
-  let where = "WHERE (intent ILIKE $1 OR commit_message ILIKE $1)";
-  where += " AND intent IS NOT NULL";
+): SearchResult[] {
+  const safeQuery = `%${escapeLike(query)}%`;
+
+  let sql = `
+    SELECT function_id, file_path, function_name, intent, confidence,
+           commit_sha, author
+    FROM decision_events
+    WHERE (intent LIKE ? ESCAPE '\\' OR commit_message LIKE ? ESCAPE '\\')
+      AND intent IS NOT NULL`;
+
+  const params: unknown[] = [safeQuery, safeQuery];
 
   if (repoPath) {
-    where += ` AND repo_path = $2`;
+    sql += ` AND repo_path = ?`;
     params.push(repoPath);
   }
 
+  sql += `
+    GROUP BY function_id
+    ORDER BY MAX(created_at) DESC
+    LIMIT ?`;
   params.push(limit);
-  const limitParam = `$${params.length}`;
 
-  const { rows } = await pool.query(
-    `SELECT DISTINCT ON (function_id)
-       function_id, file_path, function_name, intent, confidence,
-       commit_sha, author
-     FROM decision_events
-     ${where}
-     ORDER BY function_id, created_at DESC
-     LIMIT ${limitParam}`,
-    params
+  return (db.prepare(sql).all(...params) as Record<string, unknown>[]).map(
+    (row) => ({
+      functionId: row.function_id as string,
+      filePath: row.file_path as string,
+      functionName: row.function_name as string,
+      intent: row.intent as string,
+      confidence: (row.confidence as string) ?? "UNKNOWN",
+      commitSha: (row.commit_sha as string).slice(0, 7),
+      author: (row.author as string) ?? "unknown",
+    })
   );
-
-  return rows.map((row: Record<string, unknown>) => ({
-    functionId: row.function_id as string,
-    filePath: row.file_path as string,
-    functionName: row.function_name as string,
-    intent: row.intent as string,
-    confidence: (row.confidence as string) ?? "UNKNOWN",
-    commitSha: (row.commit_sha as string).slice(0, 7),
-    author: (row.author as string) ?? "unknown",
-  }));
 }
