@@ -10,10 +10,10 @@ export interface GitwiseConfig {
   ollamaEmbedModel: string;
 }
 
-const GITWISE_DIR = join(homedir(), ".gitwise");
+const WISEGIT_DIR = join(homedir(), ".wisegit");
 
 const DEFAULTS: GitwiseConfig = {
-  dbPath: join(GITWISE_DIR, "gitwise.db"),
+  dbPath: join(WISEGIT_DIR, "wisegit.db"),
   ollamaUrl: "http://localhost:11434",
   ollamaChatModel: "llama3",
   ollamaEmbedModel: "nomic-embed-text",
@@ -71,7 +71,7 @@ export function loadConfig(repoPath?: string): GitwiseConfig {
   }
 
   // Override from environment variables
-  if (process.env.GITWISE_DB_PATH) config.dbPath = process.env.GITWISE_DB_PATH;
+  if (process.env.WISEGIT_DB_PATH) config.dbPath = process.env.WISEGIT_DB_PATH;
   if (process.env.OLLAMA_URL) config.ollamaUrl = process.env.OLLAMA_URL;
   if (process.env.OLLAMA_CHAT_MODEL)
     config.ollamaChatModel = process.env.OLLAMA_CHAT_MODEL;
@@ -86,6 +86,6 @@ export function resetConfigCache(): void {
   cachedConfig = null;
 }
 
-export function getGitwiseDir(): string {
-  return GITWISE_DIR;
+export function getWisegitDir(): string {
+  return WISEGIT_DIR;
 }

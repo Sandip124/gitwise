@@ -51,7 +51,7 @@ function sanitizeError(err: unknown): string {
  */
 export function createMcpServer(db: Database.Database): McpServer {
   const server = new McpServer({
-    name: "gitwise",
+    name: "wisegit",
     version: "0.1.0",
   });
 

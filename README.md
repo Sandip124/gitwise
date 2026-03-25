@@ -1,11 +1,11 @@
-# gitwise
+# wisegit
 
 > *"Don't take a fence down until you know the reason it was put up."*
 > — G.K. Chesterton
 
-**gitwise** is a local MCP server that extracts decision intent from git history and protects intentional code from AI modification.
+**wisegit** is a local MCP server that extracts decision intent from git history and protects intentional code from AI modification.
 
-When Claude Code (or any MCP-compatible agent) is about to edit a file, gitwise injects a **decision manifest** showing which functions are frozen, stable, or open — so the AI respects what was intentional, not just what compiles.
+When Claude Code (or any MCP-compatible agent) is about to edit a file, wisegit injects a **decision manifest** showing which functions are frozen, stable, or open — so the AI respects what was intentional, not just what compiles.
 
 **Zero config. Zero external services. Everything local.**
 
@@ -65,11 +65,11 @@ That's it. No Docker, no PostgreSQL, no external services.
 
 ```bash
 cd /path/to/your/repo
-npx gitwise-mcp setup
+npx wisegit setup
 ```
 
 This single command:
-- Creates a local SQLite database at `~/.gitwise/gitwise.db`
+- Creates a local SQLite database at `~/.wisegit/wisegit.db`
 - Indexes your entire git history (462 commits in ~13 seconds)
 - Creates `.mcp.json` for Claude Code auto-discovery
 - Creates `CLAUDE.md` rules that instruct AI to check before editing
@@ -78,7 +78,7 @@ This single command:
 ### 2. Done
 
 Open the repo in Claude Code. It will automatically:
-1. Start the gitwise MCP server (via `.mcp.json`)
+1. Start the wisegit MCP server (via `.mcp.json`)
 2. Read the protection rules (via `CLAUDE.md`)
 3. Call `get_file_decisions` before editing any file
 
@@ -93,24 +93,24 @@ Open the repo in Claude Code. It will automatically:
 ## CLI Commands
 
 ```bash
-gitwise setup [--path <dir>] [--global]         # One-command repo setup
-gitwise init [--full-history] [--path <dir>]     # Index git history
-gitwise audit <file>                             # Show decision manifest
-gitwise history <target> [--file <path>]         # Show decision timeline
-gitwise serve                                    # Start MCP server (stdio)
-gitwise hook install|uninstall                   # Manage git hooks
+wisegit setup [--path <dir>] [--global]         # One-command repo setup
+wisegit init [--full-history] [--path <dir>]     # Index git history
+wisegit audit <file>                             # Show decision manifest
+wisegit history <target> [--file <path>]         # Show decision timeline
+wisegit serve                                    # Start MCP server (stdio)
+wisegit hook install|uninstall                   # Manage git hooks
 ```
 
 ## Configure for Claude Code
 
 ### Option A: Per-repo (recommended)
 
-Run `npx gitwise-mcp setup` in any repo. It creates `.mcp.json` automatically.
+Run `npx wisegit setup` in any repo. It creates `.mcp.json` automatically.
 
 ### Option B: Global registration
 
 ```bash
-claude mcp add gitwise -- npx gitwise-mcp serve
+claude mcp add wisegit -- npx wisegit serve
 ```
 
 ### Option C: Manual `.mcp.json`
@@ -119,9 +119,9 @@ Create `.mcp.json` in your repo root:
 
 ```json
 {
-  "gitwise": {
+  "wisegit": {
     "command": "npx",
-    "args": ["gitwise-mcp", "serve"]
+    "args": ["wisegit", "serve"]
   }
 }
 ```
@@ -166,7 +166,7 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
 └─────────────────┬───────────────────────────────┘
                   │ MCP (stdio)
 ┌─────────────────▼───────────────────────────────┐
-│  gitwise MCP Server                             │
+│  wisegit MCP Server                             │
 │  ┌──────────┐ ┌──────────┐ ┌─────────────────┐ │
 │  │get_file_ │ │get_freeze│ │search_decisions │ │
 │  │decisions │ │_score    │ │                 │ │
@@ -174,7 +174,7 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
 └───────┼─────────────┼───────────────┼───────────┘
         │             │               │
 ┌───────▼─────────────▼───────────────▼───────────┐
-│  SQLite (~/.gitwise/gitwise.db)                 │
+│  SQLite (~/.wisegit/wisegit.db)                 │
 │  ┌──────────────┐  ┌────────────┐               │
 │  │decision_events│  │freeze_scores│               │
 │  │(append-only) │  │(derived)   │               │
@@ -186,7 +186,7 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GITWISE_DB_PATH` | `~/.gitwise/gitwise.db` | SQLite database path |
+| `WISEGIT_DB_PATH` | `~/.wisegit/wisegit.db` | SQLite database path |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama server URL (Phase 2) |
 | `OLLAMA_CHAT_MODEL` | `llama3` | Model for intent extraction (Phase 2) |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Model for embeddings (Phase 2) |
@@ -195,7 +195,7 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
 
 - **Everything runs locally** — zero bytes sent to external services
 - **Append-only event store** — decisions are never deleted, only added
-- **SQLite database** stored at `~/.gitwise/gitwise.db` — no network exposure
+- **SQLite database** stored at `~/.wisegit/wisegit.db` — no network exposure
 - MCP tool inputs validated with strict Zod schemas (path traversal protection, length limits)
 - Error messages sanitized before returning to MCP clients
 - File writes check for symlinks before writing

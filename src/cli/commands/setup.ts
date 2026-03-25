@@ -13,9 +13,9 @@ import { runInitPipeline } from "../../pipeline/init-pipeline.js";
 import { logger } from "../../shared/logger.js";
 
 const CLAUDE_MD_RULES = `
-## gitwise — Decision Protection Rules
+## wisegit — Decision Protection Rules
 
-This repository is indexed by **gitwise**, which tracks the intent behind code
+This repository is indexed by **wisegit**, which tracks the intent behind code
 decisions using git history. Before modifying any file, the AI agent MUST:
 
 1. **ALWAYS call \`get_file_decisions\`** before editing any source file to see
@@ -53,7 +53,7 @@ export async function setupCommand(options: {
 }): Promise<void> {
   const repoPath = resolve(options.path ?? process.cwd());
 
-  console.log("Setting up gitwise...\n");
+  console.log("Setting up wisegit...\n");
 
   if (!existsSync(resolve(repoPath, ".git"))) {
     console.error(`Error: ${repoPath} is not a git repository.`);
@@ -61,7 +61,7 @@ export async function setupCommand(options: {
   }
   console.log(`  \u2713 Git repository: ${repoPath}`);
 
-  // Initialize SQLite database (auto-creates ~/.gitwise/gitwise.db)
+  // Initialize SQLite database (auto-creates ~/.wisegit/wisegit.db)
   const db = getDb();
   runMigrations(db);
   console.log("  \u2713 Database ready (SQLite)");
@@ -69,9 +69,9 @@ export async function setupCommand(options: {
   // Create .mcp.json for Claude Code
   const mcpConfigPath = resolve(repoPath, ".mcp.json");
   const mcpConfig = {
-    gitwise: {
+    wisegit: {
       command: "npx",
-      args: ["gitwise-mcp", "serve"],
+      args: ["wisegit", "serve"],
     },
   };
 
@@ -84,7 +84,7 @@ export async function setupCommand(options: {
           existing !== null &&
           !Array.isArray(existing)
         ) {
-          existing.gitwise = mcpConfig.gitwise;
+          existing.wisegit = mcpConfig.wisegit;
           writeFileSync(
             mcpConfigPath,
             JSON.stringify(existing, null, 2) + "\n"
@@ -109,23 +109,23 @@ export async function setupCommand(options: {
     console.log("  \u26a0 Skipped .mcp.json (path is a symlink)");
   }
 
-  // Add gitwise rules to CLAUDE.md
+  // Add wisegit rules to CLAUDE.md
   const claudeMdPath = resolve(repoPath, "CLAUDE.md");
   if (safeToWrite(claudeMdPath)) {
     if (existsSync(claudeMdPath)) {
       const existing = readFileSync(claudeMdPath, "utf-8");
-      if (existing.includes("gitwise")) {
-        console.log("  \u2713 CLAUDE.md already contains gitwise rules");
+      if (existing.includes("wisegit")) {
+        console.log("  \u2713 CLAUDE.md already contains wisegit rules");
       } else {
         writeFileSync(
           claudeMdPath,
           existing + "\n\n" + CLAUDE_MD_RULES + "\n"
         );
-        console.log("  \u2713 Appended gitwise rules to CLAUDE.md");
+        console.log("  \u2713 Appended wisegit rules to CLAUDE.md");
       }
     } else {
       writeFileSync(claudeMdPath, CLAUDE_MD_RULES + "\n");
-      console.log("  \u2713 Created CLAUDE.md with gitwise rules");
+      console.log("  \u2713 Created CLAUDE.md with wisegit rules");
     }
   } else {
     console.log("  \u26a0 Skipped CLAUDE.md (path is a symlink)");
@@ -174,16 +174,16 @@ export async function setupCommand(options: {
     try {
       execFileSync(
         "claude",
-        ["mcp", "add", "gitwise", "--", "npx", "gitwise-mcp", "serve"],
+        ["mcp", "add", "wisegit", "--", "npx", "wisegit", "serve"],
         { stdio: "pipe" }
       );
-      console.log("  \u2713 Registered gitwise globally with Claude Code");
+      console.log("  \u2713 Registered wisegit globally with Claude Code");
     } catch {
       console.log(
         "  \u26a0 Could not register globally (claude CLI not found)"
       );
       console.log(
-        "    Run manually: claude mcp add gitwise -- npx gitwise-mcp serve"
+        "    Run manually: claude mcp add wisegit -- npx wisegit serve"
       );
     }
   }
@@ -192,7 +192,7 @@ export async function setupCommand(options: {
     "\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
   );
   console.log("Setup complete! Claude Code will now:");
-  console.log("  1. See gitwise MCP tools (via .mcp.json)");
+  console.log("  1. See wisegit MCP tools (via .mcp.json)");
   console.log("  2. Follow decision protection rules (via CLAUDE.md)");
   console.log("  3. Call get_file_decisions before editing files");
   console.log(

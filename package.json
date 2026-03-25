@@ -1,11 +1,11 @@
 {
-  "name": "gitwise-mcp",
+  "name": "wisegit",
   "version": "0.1.0",
   "description": "MCP server that extracts decision intent from git history and protects intentional code from AI modification",
   "type": "module",
   "main": "dist/mcp/index.js",
   "bin": {
-    "gitwise": "dist/cli/index.js"
+    "wisegit": "dist/cli/index.js"
   },
   "files": [
     "dist",
@@ -40,11 +40,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Sandip124/gitwise.git"
+    "url": "git+https://github.com/Sandip124/wisegit.git"
   },
-  "homepage": "https://github.com/Sandip124/gitwise#readme",
+  "homepage": "https://github.com/Sandip124/wisegit#readme",
   "bugs": {
-    "url": "https://github.com/Sandip124/gitwise/issues"
+    "url": "https://github.com/Sandip124/wisegit/issues"
   },
   "engines": {
     "node": ">=20.0.0"

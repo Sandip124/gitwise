@@ -11,7 +11,7 @@ import { setupCommand } from "./commands/setup.js";
 const program = new Command();
 
 program
-  .name("gitwise")
+  .name("wisegit")
   .description(
     "Extract decision intent from git history and protect intentional code"
   )
