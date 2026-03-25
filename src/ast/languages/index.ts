@@ -3,6 +3,8 @@ import { typescriptConfig } from "./typescript.js";
 import { javascriptConfig } from "./javascript.js";
 import { pythonConfig } from "./python.js";
 import { csharpConfig } from "./csharp.js";
+import { goConfig } from "./go.js";
+import { rustConfig } from "./rust.js";
 import { extname } from "node:path";
 
 const ALL_CONFIGS: LanguageConfig[] = [
@@ -10,6 +12,8 @@ const ALL_CONFIGS: LanguageConfig[] = [
   javascriptConfig,
   pythonConfig,
   csharpConfig,
+  goConfig,
+  rustConfig,
 ];
 
 const extensionMap = new Map<string, LanguageConfig>();

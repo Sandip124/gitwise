@@ -14,6 +14,7 @@ import {
   CommitInfo,
 } from "../core/types.js";
 import { EventStore } from "../db/event-store.js";
+import { ChunkStore } from "../db/chunk-store.js";
 import { FreezeStore } from "../db/freeze-store.js";
 import { runMigrations } from "../db/migrator.js";
 import { logger } from "../shared/logger.js";
@@ -45,6 +46,7 @@ export async function runInitPipeline(
   runMigrations(db);
 
   const eventStore = new EventStore(db);
+  const chunkStore = new ChunkStore(db);
   const freezeStore = new FreezeStore(db);
 
   const hasExisting = eventStore.hasEventsForRepo(repoPath);
@@ -91,6 +93,10 @@ export async function runInitPipeline(
       );
     }
   }
+
+  // Store current function chunks (needed for call graph / PageRank)
+  logger.info("Storing function chunks from HEAD...");
+  await storeCurrentChunks(walker, repoPath, chunkStore);
 
   logger.info(
     `Computing freeze scores for ${allFunctionIds.size} functions...`
@@ -204,4 +210,73 @@ async function processCommit(
   }
 
   return events;
+}
+
+/**
+ * Parse all supported files at HEAD and store function chunks.
+ * Needed for call graph construction (PageRank).
+ */
+async function storeCurrentChunks(
+  walker: LogWalker,
+  repoPath: string,
+  chunkStore: ChunkStore
+): Promise<void> {
+  const latestCommit = await walker.getLatestCommit();
+  if (!latestCommit) return;
+
+  const { readdirSync, statSync } = await import("node:fs");
+  const { resolve, relative } = await import("node:path");
+
+  function walkDir(dir: string): string[] {
+    const files: string[] = [];
+    try {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith(".")) continue;
+        if (entry.name === "node_modules") continue;
+        if (entry.name === "dist") continue;
+        if (entry.name === "bin") continue;
+        if (entry.name === "obj") continue;
+
+        const full = resolve(dir, entry.name);
+        if (entry.isDirectory()) {
+          files.push(...walkDir(full));
+        } else if (isSupportedFile(entry.name)) {
+          files.push(full);
+        }
+      }
+    } catch {
+      // Permission denied or similar
+    }
+    return files;
+  }
+
+  const allFiles = walkDir(repoPath);
+  let stored = 0;
+
+  for (const fullPath of allFiles) {
+    const relPath = relative(repoPath, fullPath);
+    const langConfig = getLanguageForFile(relPath);
+    if (!langConfig) continue;
+
+    let content: string;
+    try {
+      const { readFileSync } = await import("node:fs");
+      content = readFileSync(fullPath, "utf-8");
+    } catch {
+      continue;
+    }
+
+    try {
+      const tree = await parseSource(content, langConfig);
+      const chunks = extractChunks(tree, relPath, langConfig);
+      if (chunks.length > 0) {
+        chunkStore.upsertChunks(repoPath, chunks, latestCommit.sha);
+        stored += chunks.length;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  logger.info(`Stored ${stored} function chunks from ${allFiles.length} files`);
 }

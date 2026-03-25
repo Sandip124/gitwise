@@ -8,6 +8,17 @@ import {
 import { CATEGORY_WEIGHTS, GIT_SIGNALS } from "./signal-weights.js";
 import { getRecoveryLevel } from "./recovery-levels.js";
 
+export interface FreezeScoreContext {
+  pagerank?: number;
+  theoryGap?: boolean;
+  coChangeScore?: number;
+  issueSignalScore?: number;
+  codeStructureScore?: number;
+  testSignalScore?: number;
+  naurScore?: number;
+  arandaScore?: number;
+}
+
 /**
  * Calculate freeze score for a function by replaying its event stream.
  *
@@ -15,20 +26,10 @@ import { getRecoveryLevel } from "./recovery-levels.js";
  * to new fault distributions, since fault occurrences directly affect
  * the model." This function replays the full event history to derive
  * the score — never stored, always computed fresh.
- *
- * Phase 1 implements git signals only. Issue, code structure, test,
- * structural, Naur, and Aranda signals are added in later phases.
  */
 export function calculateFreezeScore(
   events: DecisionEvent[],
-  options?: {
-    pagerank?: number;
-    issueSignalScore?: number;
-    codeStructureScore?: number;
-    testSignalScore?: number;
-    naurScore?: number;
-    arandaScore?: number;
-  }
+  ctx?: FreezeScoreContext
 ): FreezeScore {
   if (events.length === 0) {
     return emptyScore("", "", "");
@@ -39,15 +40,16 @@ export function calculateFreezeScore(
   const functionName = events[0].functionName ?? "";
 
   const gitScore = calculateGitSignals(events);
-  const issueScoreFromEvents = calculateIssueSignals(events);
+  const issueScore = ctx?.issueSignalScore ?? calculateIssueSignals(events);
+  const arandaScore = ctx?.arandaScore ?? calculateArandaSignals(events);
+  const naurScore = ctx?.naurScore ?? 0;
+  const codeStructScore = ctx?.codeStructureScore ?? 0;
+  const testScore = ctx?.testSignalScore ?? 0;
 
-  // Issue signals: computed from ISSUE_ENRICHED events, or overridden
-  const issueScore = options?.issueSignalScore ?? issueScoreFromEvents;
-  const codeStructScore = options?.codeStructureScore ?? 0;
-  const testScore = options?.testSignalScore ?? 0;
-  const structuralScore = options?.pagerank ?? 0;
-  const naurScore = options?.naurScore ?? 0;
-  const arandaScore = options?.arandaScore ?? 0;
+  // Structural: combine PageRank + co-change
+  const pagerankVal = ctx?.pagerank ?? 0;
+  const coChange = ctx?.coChangeScore ?? 0;
+  const structuralScore = clamp(pagerankVal * 0.6 + coChange * 0.4, 0, 1);
 
   const breakdown: SignalBreakdown = {
     gitSignals: gitScore,
@@ -78,8 +80,8 @@ export function calculateFreezeScore(
     score,
     recoveryLevel: getRecoveryLevel(score),
     signalBreakdown: breakdown,
-    theoryGap: false, // Phase 2
-    pagerank: options?.pagerank ?? 0,
+    theoryGap: ctx?.theoryGap ?? false,
+    pagerank: pagerankVal,
   };
 }
 
@@ -126,7 +128,8 @@ function calculateGitSignals(events: DecisionEvent[]): number {
   const sortedByDate = events
     .filter((e) => e.authoredAt)
     .sort(
-      (a, b) => (a.authoredAt as Date).getTime() - (b.authoredAt as Date).getTime()
+      (a, b) =>
+        (a.authoredAt as Date).getTime() - (b.authoredAt as Date).getTime()
     );
   if (sortedByDate.length > 0) {
     const lastModified = sortedByDate[sortedByDate.length - 1].authoredAt!;
@@ -167,15 +170,68 @@ function calculateIssueSignals(events: DecisionEvent[]): number {
   const issueEvents = events.filter(
     (e) => e.eventType === EventType.ISSUE_ENRICHED
   );
-
   if (issueEvents.length === 0) return 0;
 
   let score = 0;
-
   for (const event of issueEvents) {
     const meta = event.metadata as Record<string, unknown>;
     const boost = (meta?.freezeBoost as number) ?? 0;
     score += boost;
+  }
+  return clamp(score, 0, 1);
+}
+
+/**
+ * Compute Aranda signals (0–1) from event timeline patterns.
+ *
+ * Per Aranda & Venolia [3]:
+ * - "Forgotten" pattern: burst of activity + 12mo silence
+ * - Timeline discontinuity: large gaps with no events
+ * - Broken issue links (detected via ISSUE_UNREACHABLE metadata)
+ */
+function calculateArandaSignals(events: DecisionEvent[]): number {
+  if (events.length < 2) return 0;
+
+  let score = 0;
+
+  // Sort events by date
+  const dated = events
+    .filter((e) => e.authoredAt)
+    .sort(
+      (a, b) =>
+        (a.authoredAt as Date).getTime() - (b.authoredAt as Date).getTime()
+    );
+
+  if (dated.length < 2) return 0;
+
+  // "Forgotten" pattern: had activity but nothing for 12+ months
+  const lastEvent = dated[dated.length - 1].authoredAt!;
+  const monthsSinceLastEvent =
+    (Date.now() - lastEvent.getTime()) / (30 * 24 * 60 * 60 * 1000);
+
+  if (dated.length >= 3 && monthsSinceLastEvent > 12) {
+    score += 0.2; // forgottenPattern weight
+  }
+
+  // Timeline discontinuity: any gap > 12 months between events
+  for (let i = 1; i < dated.length; i++) {
+    const gap =
+      ((dated[i].authoredAt as Date).getTime() -
+        (dated[i - 1].authoredAt as Date).getTime()) /
+      (30 * 24 * 60 * 60 * 1000);
+    if (gap > 12) {
+      score += 0.15; // timelineDiscontinuity weight
+      break;
+    }
+  }
+
+  // Broken issue links (from issue enrichment metadata)
+  const hasBrokenLink = events.some((e) => {
+    const meta = e.metadata as Record<string, unknown>;
+    return meta?.issueStatus === "unreachable";
+  });
+  if (hasBrokenLink) {
+    score += 0.1; // brokenIssueLink weight
   }
 
   return clamp(score, 0, 1);
