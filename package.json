@@ -34,7 +34,10 @@
     "llm",
     "claude",
     "code-protection",
-    "freeze-score"
+    "freeze-score",
+    "issue-enrichment",
+    "github",
+    "gitlab"
   ],
   "author": "Sandip124",
   "license": "MIT",

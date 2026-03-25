@@ -75,7 +75,16 @@ This single command:
 - Creates `CLAUDE.md` rules that instruct AI to check before editing
 - Adds `.mcp.json` to `.gitignore`
 
-### 2. Done
+### 2. Enrich with Issue Context (optional)
+
+```bash
+# Fetch issue/PR details from GitHub/GitLab
+GITHUB_TOKEN=ghp_... npx wisegit enrich
+```
+
+This fetches referenced issues (e.g., `#134` in commit messages), detects Won't Fix / By Design decisions, and boosts freeze scores for functions linked to those issues.
+
+### 3. Done
 
 Open the repo in Claude Code. It will automatically:
 1. Start the wisegit MCP server (via `.mcp.json`)
@@ -95,6 +104,7 @@ Open the repo in Claude Code. It will automatically:
 ```bash
 wisegit setup [--path <dir>] [--global]         # One-command repo setup
 wisegit init [--full-history] [--path <dir>]     # Index git history
+wisegit enrich [--path <dir>]                    # Fetch issue/PR context from GitHub/GitLab
 wisegit audit <file>                             # Show decision manifest
 wisegit history <target> [--file <path>]         # Show decision timeline
 wisegit serve                                    # Start MCP server (stdio)
@@ -137,6 +147,32 @@ Create `.mcp.json` in your repo root:
 
 More languages can be added via Tree-sitter grammar configs in `src/ast/languages/`.
 
+## Issue Enrichment
+
+A commit saying `fix: handle null token #134` points to an issue containing reproduction steps, root cause, and explicit decision rationale — everything the commit message never says.
+
+```bash
+# Fetch issue context from GitHub/GitLab
+wisegit enrich --path /path/to/repo
+
+# With auth (5000 req/hr instead of 60)
+GITHUB_TOKEN=ghp_... wisegit enrich
+```
+
+**Supported platforms:** GitHub, GitLab (Azure DevOps, Jira, Bitbucket planned)
+
+**Auth tokens:** `GITHUB_TOKEN` / `GH_TOKEN` for GitHub, `GITLAB_TOKEN` for GitLab. Never stored by wisegit.
+
+### Issue-derived freeze signals
+
+| Signal | Freeze Boost | When |
+|--------|-------------|------|
+| Won't Fix / By Design | **+0.35** | Issue closed as `not_planned`, or has `wontfix`/`by-design` label, or comment says "intentional" |
+| Reproduction steps | +0.15 | Issue body contains "steps to reproduce" |
+| Platform-specific label | +0.10 | Issue labeled `ios`, `safari`, `windows`, etc. |
+| Issue unreachable | +0.10 | Issue ref exists but API returned 404 — absent context = protect more |
+| PR review comments | +0.15 | Linked PR had reviewer discussion |
+
 ## Freeze Score Signals
 
 The freeze score is **never stored directly** — it's derived by replaying the event stream for each function. Signal categories:
@@ -175,10 +211,18 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
         │             │               │
 ┌───────▼─────────────▼───────────────▼───────────┐
 │  SQLite (~/.wisegit/wisegit.db)                 │
-│  ┌──────────────┐  ┌────────────┐               │
-│  │decision_events│  │freeze_scores│               │
-│  │(append-only) │  │(derived)   │               │
-│  └──────────────┘  └────────────┘               │
+│  ┌──────────────┐ ┌────────────┐ ┌───────────┐ │
+│  │decision_events│ │freeze_scores│ │issue_     │ │
+│  │(append-only) │ │(derived)   │ │enrichments│ │
+│  └──────────────┘ └────────────┘ └─────┬─────┘ │
+└────────────────────────────────────────┼────────┘
+                                         │
+┌────────────────────────────────────────▼────────┐
+│  Issue Enrichment (wisegit enrich)              │
+│  ┌─────────┐ ┌─────────┐ ┌──────────────────┐  │
+│  │ GitHub  │ │ GitLab  │ │ Jira (planned)   │  │
+│  │ REST API│ │ REST API│ │                  │  │
+│  └─────────┘ └─────────┘ └──────────────────┘  │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -187,13 +231,15 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WISEGIT_DB_PATH` | `~/.wisegit/wisegit.db` | SQLite database path |
+| `GITHUB_TOKEN` / `GH_TOKEN` | — | GitHub API token (5000 req/hr vs 60 unauthenticated) |
+| `GITLAB_TOKEN` | — | GitLab API token for issue enrichment |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama server URL (Phase 2) |
 | `OLLAMA_CHAT_MODEL` | `llama3` | Model for intent extraction (Phase 2) |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Model for embeddings (Phase 2) |
 
 ## Security
 
-- **Everything runs locally** — zero bytes sent to external services
+- **Everything runs locally** — only issue enrichment makes outbound API calls (opt-in via `wisegit enrich`)
 - **Append-only event store** — decisions are never deleted, only added
 - **SQLite database** stored at `~/.wisegit/wisegit.db` — no network exposure
 - MCP tool inputs validated with strict Zod schemas (path traversal protection, length limits)
@@ -204,7 +250,7 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
 ## Roadmap
 
 - [x] **Phase 1** — Event store, AST chunking, commit classification, intent extraction, MCP server, CLI
-- [ ] **Phase 1.5** — Issue enrichment (GitHub, GitLab, Jira, Azure DevOps)
+- [x] **Phase 1.5** — Issue enrichment (GitHub, GitLab) with Won't Fix/By Design detection, freeze boost signals
 - [ ] **Phase 2** — Full freeze score (PageRank, theory gap detection, Ollama for NOISE commits, vector search)
 - [ ] **Phase 4** — Override system, branch context preservation, merge conflict loss detection
 

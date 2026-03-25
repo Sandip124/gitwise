@@ -532,21 +532,30 @@ gitwise init --full-history
 ## Build Phases
 
 ### Phase 1 — Event Store + AST Chunking
-- [ ] Tree-sitter: parse function boundaries per language (AST-level [6])
-- [ ] Git log walker: per-function diffs per commit
-- [ ] Commit classifier: STRUCTURED / DESCRIPTIVE / NOISE [4]
-- [ ] Rule-based intent extraction for STRUCTURED + DESCRIPTIVE
-- [ ] Ollama for NOISE + CONFLICT only
-- [ ] Append events to `decision_events`
-- [ ] `gitwise init --full-history`
+- [x] Tree-sitter: parse function boundaries per language (AST-level [6])
+- [x] Git log walker: per-function diffs per commit
+- [x] Commit classifier: STRUCTURED / DESCRIPTIVE / NOISE [4]
+- [x] Rule-based intent extraction for STRUCTURED + DESCRIPTIVE
+- [ ] Ollama for NOISE + CONFLICT only (Phase 2)
+- [x] Append events to `decision_events`
+- [x] `wisegit init --full-history`
+- [x] MCP server with 3 tools (get_file_decisions, get_freeze_score, search_decisions)
+- [x] CLI with setup, init, audit, history, serve, hook, enrich commands
+- [x] SQLite event store (zero-config, no Docker required)
 
 ### Phase 1.5 — Issue Enrichment
-- [ ] Git remote URL → platform detector
-- [ ] GitHub / GitLab / Azure DevOps / Jira API clients
-- [ ] Local auth token storage
-- [ ] Won't Fix / By Design → freeze signal +0.35 [3]
-- [ ] Broken link → ISSUE_UNREACHABLE → +0.10 [3]
-- [ ] `ISSUE_ENRICHED` event type
+- [x] Git remote URL → platform detector
+- [x] GitHub / GitLab API clients
+- [x] Local auth token via env vars (GITHUB_TOKEN, GITLAB_TOKEN)
+- [x] Won't Fix / By Design → freeze signal +0.35 [3]
+- [x] Broken link → ISSUE_UNREACHABLE → +0.10 [3]
+- [x] `ISSUE_ENRICHED` event type
+- [x] Reproduction steps detection → +0.15
+- [x] Platform-specific label detection → +0.10
+- [x] PR review comments signal → +0.15
+- [x] `wisegit enrich` CLI command
+- [x] Auto-recompute freeze scores after enrichment
+- [ ] Azure DevOps / Jira / Bitbucket API clients (future)
 
 ### Phase 2 — Freeze Score
 - [ ] All signal categories with academic weights
