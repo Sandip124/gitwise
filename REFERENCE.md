@@ -582,12 +582,17 @@ gitwise init --full-history
 - [x] Post-commit hook installer
 
 ### Phase 4 — Override + Branch Context
-- [ ] `gitwise override` with mandatory reason
-- [ ] Watch mode on overridden functions [8]
-- [ ] Time-boxed override + expiry prompt
-- [ ] Post-merge hook for branch snapshot [5][9]
-- [ ] `gitwise recover-branch-context`
-- [ ] Merge conflict loss detector
+- [x] `wisegit override` with mandatory reason + shows original intent
+- [x] Override visible in MCP decision manifest with warning
+- [x] Time-boxed overrides: `--expires 7d/24h/30m` with auto-expiry
+- [x] `wisegit overrides` — list all active overrides
+- [x] Override revocation with freeze score recomputation
+- [x] FREEZE_OVERRIDE event in append-only log
+- [x] Post-merge hook for branch snapshot [5][9]
+- [x] `wisegit branch-capture` — capture context from latest merge
+- [x] `wisegit branch-list` — list all captured snapshots
+- [x] `wisegit branch-recover <sha>` — recover from old merge commit
+- [x] branch_snapshots table with full merge metadata
 
 ### Phase 5 — Polish + Optional Enhancement
 - [ ] README with Chesterton's Fence opener

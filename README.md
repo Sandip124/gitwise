@@ -108,8 +108,13 @@ wisegit enrich [--path <dir>]                    # Fetch issue/PR context from G
 wisegit audit <file>                             # Show decision manifest
 wisegit history <target> [--file <path>]         # Show decision timeline
 wisegit recompute [--path <dir>]                  # Recompute scores with PageRank + theory gaps
+wisegit override <fn> --file <f> --reason "..."  # Override a frozen function
+wisegit overrides                                # List active overrides
+wisegit branch-capture                           # Capture branch context from last merge
+wisegit branch-list                              # List all captured branch snapshots
+wisegit branch-recover <sha>                     # Recover context from old merge commit
 wisegit serve                                    # Start MCP server (stdio)
-wisegit hook install|uninstall                   # Manage git hooks
+wisegit hook install|uninstall                   # Manage git hooks (post-commit + post-merge)
 ```
 
 ## Configure for Claude Code
@@ -255,7 +260,7 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
 - [x] **Phase 1** — Event store, AST chunking, commit classification, intent extraction, MCP server, CLI
 - [x] **Phase 1.5** — Issue enrichment (GitHub, GitLab) with Won't Fix/By Design detection, freeze boost signals
 - [x] **Phase 2** — Full freeze score: call graph + PageRank, theory gap detection (Naur death, forgotten patterns), co-change signals, Aranda signals, Ollama client, Go + Rust support
-- [ ] **Phase 4** — Override system, branch context preservation, merge conflict loss detection
+- [x] **Phase 4** — Override system (mandatory reason, time-boxed expiry, audit trail), branch context preservation (post-merge hook, snapshot storage, recovery)
 
 ## License
 
