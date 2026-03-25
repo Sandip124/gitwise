@@ -6,6 +6,7 @@ import { auditCommand } from "./commands/audit.js";
 import { historyCommand } from "./commands/history.js";
 import { serveCommand } from "./commands/serve.js";
 import { hookCommand } from "./commands/hook.js";
+import { setupCommand } from "./commands/setup.js";
 
 const program = new Command();
 
@@ -61,6 +62,22 @@ program
   .option("--path <path>", "Path to the git repository")
   .action(async (action: string, opts) => {
     await hookCommand(action, { path: opts.path });
+  });
+
+program
+  .command("setup")
+  .description(
+    "One-command setup: configure MCP, CLAUDE.md rules, and index a repo"
+  )
+  .option("--path <path>", "Path to the git repository to set up")
+  .option("--skip-index", "Skip indexing (just configure MCP + CLAUDE.md)")
+  .option("--global", "Also register gitwise globally with Claude Code CLI")
+  .action(async (opts) => {
+    await setupCommand({
+      path: opts.path,
+      skipIndex: opts.skipIndex,
+      global: opts.global,
+    });
   });
 
 program.parse();

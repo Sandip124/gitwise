@@ -143,5 +143,35 @@ export function createMcpServer(pool: pg.Pool): McpServer {
     }
   );
 
+  // ── Prompt: decision protection workflow ──
+  server.prompt(
+    "check_before_edit",
+    "MANDATORY workflow before editing any file. Returns the decision manifest showing which functions are FROZEN, STABLE, or OPEN.",
+    { filePath: z.string().describe("File path about to be edited") },
+    ({ filePath }) => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: [
+              `Before editing ${filePath}, check its decision manifest.`,
+              "",
+              "Rules:",
+              "- FROZEN (score ≥ 0.80): DO NOT modify without explicit user approval.",
+              "  These contain verified, intentional decisions backed by git history.",
+              "- STABLE (score 0.50–0.79): Proceed with caution. Review intent history",
+              "  and explain why the change is safe before proceeding.",
+              "- OPEN (score < 0.50): Safe to modify freely.",
+              "- THEORY GAP: Treat all logic as intentional pending manual review.",
+              "",
+              `Call get_file_decisions with filePath="${filePath}" now.`,
+            ].join("\n"),
+          },
+        },
+      ],
+    })
+  );
+
   return server;
 }
