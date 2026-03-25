@@ -573,13 +573,13 @@ gitwise init --full-history
 - [x] Go + Rust language support (6 languages total)
 - [x] Ollama integration into init pipeline (opt-in via `--ollama` flag)
 
-### Phase 3 — MCP Server + CLI
-- [ ] `get_file_decisions` with recovery levels
-- [ ] `get_freeze_score` with reasoning + signal breakdown
-- [ ] `search_decisions` BM25 + vector hybrid
-- [ ] `gitwise audit <file>` CLI
-- [ ] `gitwise history <function>` CLI
-- [ ] Post-commit hook installer
+### Phase 3 — MCP Server + CLI (completed in Phase 1)
+- [x] `get_file_decisions` with recovery levels
+- [x] `get_freeze_score` with reasoning + signal breakdown
+- [x] `search_decisions` keyword search (vector hybrid planned)
+- [x] `wisegit audit <file>` CLI
+- [x] `wisegit history <function>` CLI
+- [x] Post-commit hook installer
 
 ### Phase 4 — Override + Branch Context
 - [ ] `gitwise override` with mandatory reason

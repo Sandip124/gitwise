@@ -9,8 +9,13 @@ import {
 import { resolve, join } from "node:path";
 
 const POST_COMMIT_HOOK = `#!/bin/sh
-# gitwise post-commit hook — index the latest commit
-gitwise init --path "$(git rev-parse --show-toplevel)" 2>/dev/null || true
+# wisegit post-commit hook — index the latest commit
+wisegit init --path "$(git rev-parse --show-toplevel)" 2>/dev/null || true
+`;
+
+const POST_MERGE_HOOK = `#!/bin/sh
+# wisegit post-merge hook — capture branch context at merge time
+wisegit branch-capture --path "$(git rev-parse --show-toplevel)" 2>/dev/null || true
 `;
 
 /**
@@ -70,6 +75,14 @@ export async function hookCommand(
     writeFileSync(hookPath, POST_COMMIT_HOOK, "utf-8");
     chmodSync(hookPath, "755");
     console.log(`Installed post-commit hook at ${hookPath}`);
+
+    // Also install post-merge hook for branch context capture
+    const mergeHookPath = join(hooksDir, "post-merge");
+    if (!existsSync(mergeHookPath) && isSafeHookPath(mergeHookPath, hooksDir)) {
+      writeFileSync(mergeHookPath, POST_MERGE_HOOK, "utf-8");
+      chmodSync(mergeHookPath, "755");
+      console.log(`Installed post-merge hook at ${mergeHookPath}`);
+    }
   } else if (action === "uninstall") {
     if (!existsSync(hookPath)) {
       console.log("No post-commit hook found. Nothing to remove.");
@@ -82,6 +95,13 @@ export async function hookCommand(
 
     unlinkSync(hookPath);
     console.log(`Removed post-commit hook from ${hookPath}`);
+
+    // Also remove post-merge hook
+    const mergeHookPath = join(hooksDir, "post-merge");
+    if (existsSync(mergeHookPath) && isSafeHookPath(mergeHookPath, hooksDir)) {
+      unlinkSync(mergeHookPath);
+      console.log(`Removed post-merge hook from ${mergeHookPath}`);
+    }
   } else {
     console.error(`Unknown action: ${action}. Use "install" or "uninstall".`);
     process.exit(1);

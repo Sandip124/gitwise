@@ -9,6 +9,8 @@ import { hookCommand } from "./commands/hook.js";
 import { setupCommand } from "./commands/setup.js";
 import { enrichCommand } from "./commands/enrich.js";
 import { recomputeCommand } from "./commands/recompute.js";
+import { overrideCommand } from "./commands/override.js";
+import { branchCaptureCommand, branchListCommand, branchRecoverCommand } from "./commands/branch.js";
 
 const program = new Command();
 
@@ -102,6 +104,58 @@ program
   .option("--path <path>", "Path to the git repository")
   .action(async (opts) => {
     await recomputeCommand({ path: opts.path });
+  });
+
+program
+  .command("override <function>")
+  .description("Override a frozen function with mandatory reason")
+  .requiredOption("--reason <reason>", "Why the override is necessary (mandatory)")
+  .option("--file <file>", "File containing the function")
+  .option("--path <path>", "Path to the git repository")
+  .option("--expires <duration>", "Auto-expire after duration (e.g., 7d, 24h)")
+  .option("--list", "List all active overrides")
+  .option("--revoke <function>", "Revoke an existing override")
+  .action(async (target: string, opts) => {
+    await overrideCommand(target, {
+      reason: opts.reason,
+      file: opts.file,
+      path: opts.path,
+      expires: opts.expires,
+      list: opts.list,
+      revoke: opts.revoke,
+    });
+  });
+
+program
+  .command("overrides")
+  .description("List all active overrides")
+  .option("--path <path>", "Path to the git repository")
+  .action(async (opts) => {
+    await overrideCommand("", { list: true, path: opts.path });
+  });
+
+program
+  .command("branch-capture")
+  .description("Capture branch context from the most recent merge commit")
+  .option("--path <path>", "Path to the git repository")
+  .action(async (opts) => {
+    await branchCaptureCommand({ path: opts.path });
+  });
+
+program
+  .command("branch-list")
+  .description("List all captured branch snapshots")
+  .option("--path <path>", "Path to the git repository")
+  .action(async (opts) => {
+    await branchListCommand({ path: opts.path });
+  });
+
+program
+  .command("branch-recover <sha>")
+  .description("Recover branch context from an existing merge commit SHA")
+  .option("--path <path>", "Path to the git repository")
+  .action(async (sha: string, opts) => {
+    await branchRecoverCommand(sha, { path: opts.path });
   });
 
 program.parse();

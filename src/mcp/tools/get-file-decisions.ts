@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { EventStore } from "../../db/event-store.js";
 import { FreezeStore } from "../../db/freeze-store.js";
+import { OverrideStore } from "../../db/override-store.js";
 import { getFreezeStatus } from "../../core/recovery-levels.js";
 import { DecisionEvent, FreezeScore, RecoveryLevel } from "../../core/types.js";
 
@@ -17,6 +18,8 @@ interface FunctionSummary {
   recoveryLevel: RecoveryLevel;
   status: string;
   decisions: { intent: string; confidence: string; commitSha: string }[];
+  overrideReason?: string;
+  overrideExpires?: string;
 }
 
 export function getFileDecisions(
@@ -26,6 +29,10 @@ export function getFileDecisions(
 ): FileDecisionsResult {
   const eventStore = new EventStore(db);
   const freezeStore = new FreezeStore(db);
+  const overrideStore = new OverrideStore(db);
+
+  // Expire overrides that have passed their deadline
+  overrideStore.expireOverrides();
 
   const events = eventStore.getEventsForFile(filePath, repoPath);
   const scores = freezeStore.getScoresForFile(filePath, repoPath);
@@ -62,6 +69,9 @@ export function getFileDecisions(
       if (decisions.length >= 5) break;
     }
 
+    // Check for active override
+    const override = overrideStore.getActiveOverride(functionId);
+
     functions.push({
       functionName:
         score?.functionName ??
@@ -70,8 +80,10 @@ export function getFileDecisions(
       functionId,
       freezeScore: score?.score ?? 0,
       recoveryLevel: level,
-      status,
+      status: override ? "OVERRIDE" : status,
       decisions,
+      overrideReason: override?.reason,
+      overrideExpires: override?.expiresAt?.toISOString().slice(0, 10),
     });
   }
 
@@ -99,6 +111,14 @@ function formatManifest(
     lines.push(
       `${fn.status}:  ${fn.functionName}()  [score: ${scoreStr}] [Recovery: ${fn.recoveryLevel}]`
     );
+
+    if (fn.overrideReason) {
+      lines.push(`  \u26a0 ACTIVE OVERRIDE: ${fn.overrideReason}`);
+      if (fn.overrideExpires) {
+        lines.push(`    Expires: ${fn.overrideExpires}`);
+      }
+      lines.push(`    This function is under active modification. Exercise extra caution.`);
+    }
 
     for (const decision of fn.decisions) {
       lines.push(`  - ${decision.intent}`);
