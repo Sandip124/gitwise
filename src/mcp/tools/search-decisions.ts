@@ -12,6 +12,13 @@ export interface SearchResult {
 }
 
 /**
+ * Escape ILIKE metacharacters to prevent wildcard injection.
+ */
+function escapeIlike(input: string): string {
+  return input.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+/**
  * Search decisions by keyword (BM25-style text search).
  * Vector search will be added in Phase 2 with embeddings.
  */
@@ -21,7 +28,8 @@ export async function searchDecisions(
   repoPath?: string,
   limit: number = 10
 ): Promise<SearchResult[]> {
-  const params: unknown[] = [`%${query}%`];
+  const safeQuery = escapeIlike(query);
+  const params: unknown[] = [`%${safeQuery}%`];
   let where = "WHERE (intent ILIKE $1 OR commit_message ILIKE $1)";
   where += " AND intent IS NOT NULL";
 
