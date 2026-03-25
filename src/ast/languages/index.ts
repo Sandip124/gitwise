@@ -2,12 +2,14 @@ import { LanguageConfig } from "../../core/types.js";
 import { typescriptConfig } from "./typescript.js";
 import { javascriptConfig } from "./javascript.js";
 import { pythonConfig } from "./python.js";
+import { csharpConfig } from "./csharp.js";
 import { extname } from "node:path";
 
 const ALL_CONFIGS: LanguageConfig[] = [
   typescriptConfig,
   javascriptConfig,
   pythonConfig,
+  csharpConfig,
 ];
 
 const extensionMap = new Map<string, LanguageConfig>();

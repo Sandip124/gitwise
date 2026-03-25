@@ -27,7 +27,7 @@ async function loadLanguage(config: LanguageConfig): Promise<Language> {
     // tree-sitter-wasms provides prebuilt .wasm files
     const wasmDir = resolve(
       process.cwd(),
-      "node_modules/tree-sitter-wasms/out/tree-sitter-wasms"
+      "node_modules/tree-sitter-wasms/out"
     );
 
     // Try TSX for TypeScript (handles both .ts and .tsx)
