@@ -9,7 +9,7 @@ export interface GitwiseConfig {
 }
 
 const DEFAULTS: GitwiseConfig = {
-  databaseUrl: "postgresql://gitwise:gitwise@localhost:5432/gitwise",
+  databaseUrl: "postgresql://gitwise:gitwise@localhost:5433/gitwise",
   ollamaUrl: "http://localhost:11434",
   ollamaChatModel: "llama3",
   ollamaEmbedModel: "nomic-embed-text",

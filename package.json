@@ -1,14 +1,20 @@
 {
-  "name": "gitwise",
+  "name": "gitwise-mcp",
   "version": "0.1.0",
-  "description": "Local MCP server that extracts decision intent from git history",
+  "description": "MCP server that extracts decision intent from git history and protects intentional code from AI modification",
   "type": "module",
   "main": "dist/mcp/index.js",
   "bin": {
     "gitwise": "dist/cli/index.js"
   },
+  "files": [
+    "dist",
+    "sql",
+    "REFERENCE.md"
+  ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "dev": "tsx watch src/cli/index.ts",
     "cli": "tsx src/cli/index.ts",
     "mcp": "tsx src/mcp/index.ts",
@@ -20,13 +26,26 @@
   },
   "keywords": [
     "mcp",
+    "model-context-protocol",
     "git",
     "intent",
     "decision",
     "history",
-    "llm"
+    "llm",
+    "claude",
+    "code-protection",
+    "freeze-score"
   ],
+  "author": "Sandip124",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sandip124/gitwise.git"
+  },
+  "homepage": "https://github.com/Sandip124/gitwise#readme",
+  "bugs": {
+    "url": "https://github.com/Sandip124/gitwise/issues"
+  },
   "engines": {
     "node": ">=20.0.0"
   },

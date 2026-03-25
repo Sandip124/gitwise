@@ -1,8 +1,13 @@
 import { Parser, Language, Tree } from "web-tree-sitter";
-import { readFileSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { readFileSync, existsSync } from "node:fs";
+import { resolve, join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { LanguageConfig } from "../core/types.js";
 import { ParserError } from "../shared/errors.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 let parserReady = false;
 const languageCache = new Map<string, Language>();
@@ -17,6 +22,37 @@ export async function initParser(): Promise<void> {
 }
 
 /**
+ * Resolve the tree-sitter-wasms directory.
+ * Works whether gitwise is run from source, from dist/, or as an npm package.
+ */
+function resolveWasmDir(): string {
+  // Method 1: resolve via require.resolve (works when installed as npm package)
+  try {
+    const require = createRequire(import.meta.url);
+    const wasmPkg = require.resolve("tree-sitter-wasms/package.json");
+    const dir = join(dirname(wasmPkg), "out");
+    if (existsSync(dir)) return dir;
+  } catch {
+    // fallback
+  }
+
+  // Method 2: relative to this file (works from source or dist/)
+  const candidates = [
+    resolve(__dirname, "../../node_modules/tree-sitter-wasms/out"),
+    resolve(__dirname, "../../../node_modules/tree-sitter-wasms/out"),
+    resolve(process.cwd(), "node_modules/tree-sitter-wasms/out"),
+  ];
+
+  for (const dir of candidates) {
+    if (existsSync(dir)) return dir;
+  }
+
+  throw new ParserError(
+    "Could not find tree-sitter-wasms. Run: npm install tree-sitter-wasms"
+  );
+}
+
+/**
  * Load a language grammar (WASM) and cache it.
  */
 async function loadLanguage(config: LanguageConfig): Promise<Language> {
@@ -24,11 +60,7 @@ async function loadLanguage(config: LanguageConfig): Promise<Language> {
   if (cached) return cached;
 
   try {
-    // tree-sitter-wasms provides prebuilt .wasm files
-    const wasmDir = resolve(
-      process.cwd(),
-      "node_modules/tree-sitter-wasms/out"
-    );
+    const wasmDir = resolveWasmDir();
 
     // Try TSX for TypeScript (handles both .ts and .tsx)
     let wasmPath: string;
