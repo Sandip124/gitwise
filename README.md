@@ -107,6 +107,7 @@ wisegit init [--full-history] [--path <dir>]     # Index git history
 wisegit enrich [--path <dir>]                    # Fetch issue/PR context from GitHub/GitLab
 wisegit audit <file>                             # Show decision manifest
 wisegit history <target> [--file <path>]         # Show decision timeline
+wisegit recompute [--path <dir>]                  # Recompute scores with PageRank + theory gaps
 wisegit serve                                    # Start MCP server (stdio)
 wisegit hook install|uninstall                   # Manage git hooks
 ```
@@ -144,6 +145,8 @@ Create `.mcp.json` in your repo root:
 | TypeScript | `.ts`, `.tsx` |
 | JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` |
 | Python | `.py` |
+| Go | `.go` |
+| Rust | `.rs` |
 
 More languages can be added via Tree-sitter grammar configs in `src/ast/languages/`.
 
@@ -251,7 +254,7 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
 
 - [x] **Phase 1** — Event store, AST chunking, commit classification, intent extraction, MCP server, CLI
 - [x] **Phase 1.5** — Issue enrichment (GitHub, GitLab) with Won't Fix/By Design detection, freeze boost signals
-- [ ] **Phase 2** — Full freeze score (PageRank, theory gap detection, Ollama for NOISE commits, vector search)
+- [x] **Phase 2** — Full freeze score: call graph + PageRank, theory gap detection (Naur death, forgotten patterns), co-change signals, Aranda signals, Ollama client, Go + Rust support
 - [ ] **Phase 4** — Override system, branch context preservation, merge conflict loss detection
 
 ## License

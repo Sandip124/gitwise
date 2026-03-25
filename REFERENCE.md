@@ -558,14 +558,20 @@ gitwise init --full-history
 - [ ] Azure DevOps / Jira / Bitbucket API clients (future)
 
 ### Phase 2 — Freeze Score
-- [ ] All signal categories with academic weights
-- [ ] `calculate_freeze_score(function_id)` event replay
-- [ ] Materialized view with dynamic invalidation [8]
-- [ ] Graph + PageRank for structural importance [5]
-- [ ] Theory gap detection: timeline discontinuities + author churn [2][3]
-- [ ] "Forgotten" pattern: burst → silence without resolution [3]
-- [ ] Co-change signal: frequently co-changed with frozen file [5][9]
-- [ ] Recovery level tagging: L1 / L2 / L3 per entry [3]
+- [x] All signal categories with academic weights
+- [x] `calculate_freeze_score(function_id)` event replay with full context
+- [x] Graph + PageRank for structural importance [5][8]
+- [x] Theory gap detection: Naur death signal (primary author inactive) [2]
+- [x] Theory gap detection: timeline discontinuities [3]
+- [x] "Forgotten" pattern: burst → silence without resolution [3]
+- [x] Co-change signal: frequently co-changed functions [5][9]
+- [x] Aranda signals: computed from event timeline [3]
+- [x] Recovery level tagging: L1 / L2 / L3 per entry [3]
+- [x] Ollama client for NOISE commit intent extraction [4]
+- [x] Embedding generation for future semantic search
+- [x] `wisegit recompute` CLI command
+- [x] Go + Rust language support (6 languages total)
+- [ ] Ollama integration into init pipeline (opt-in for NOISE commits)
 
 ### Phase 3 — MCP Server + CLI
 - [ ] `get_file_decisions` with recovery levels
