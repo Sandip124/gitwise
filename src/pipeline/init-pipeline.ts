@@ -9,10 +9,14 @@ import { classifyCommit } from "../core/commit-classifier.js";
 import { extractIntent } from "../core/intent-extractor.js";
 import { calculateFreezeScore } from "../core/freeze-calculator.js";
 import {
+  CommitClassification,
   DecisionEvent,
   EventType,
   CommitInfo,
+  IntentConfidence,
+  IntentSource,
 } from "../core/types.js";
+import { isOllamaAvailable, extractIntentWithLlm } from "../llm/client.js";
 import { EventStore } from "../db/event-store.js";
 import { ChunkStore } from "../db/chunk-store.js";
 import { FreezeStore } from "../db/freeze-store.js";
@@ -23,6 +27,7 @@ export interface InitPipelineOptions {
   repoPath: string;
   db: Database.Database;
   fullHistory?: boolean;
+  useOllama?: boolean;
   onProgress?: (current: number, total: number, sha: string) => void;
 }
 
@@ -63,6 +68,17 @@ export async function runInitPipeline(
   logger.info("Initializing AST parser...");
   await initParser();
 
+  // Check Ollama availability if requested
+  let ollamaReady = false;
+  if (options.useOllama) {
+    ollamaReady = await isOllamaAvailable();
+    if (ollamaReady) {
+      logger.info("Ollama available — NOISE commits will use LLM intent extraction");
+    } else {
+      logger.warn("Ollama not available — falling back to diff-only for NOISE commits");
+    }
+  }
+
   const commits = await walker.getAllCommits();
   const totalCommits = commits.length;
   logger.info(`Processing ${totalCommits} commits...`);
@@ -74,7 +90,7 @@ export async function runInitPipeline(
     const commit = commits[i];
     options.onProgress?.(i + 1, totalCommits, commit.sha);
 
-    const events = await processCommit(walker, commit, repoPath);
+    const events = await processCommit(walker, commit, repoPath, ollamaReady);
 
     if (events.length > 0) {
       eventStore.appendEvents(events);
@@ -124,7 +140,8 @@ export async function runInitPipeline(
 async function processCommit(
   walker: LogWalker,
   commit: CommitInfo,
-  repoPath: string
+  repoPath: string,
+  useOllama: boolean
 ): Promise<DecisionEvent[]> {
   const events: DecisionEvent[] = [];
 
@@ -133,7 +150,26 @@ async function processCommit(
 
   const fileDiffs = parseDiff(diffText);
   const classification = classifyCommit(commit.message);
-  const intentResult = extractIntent(commit.message, classification);
+  let intentResult = extractIntent(commit.message, classification);
+
+  // For NOISE commits, try Ollama if available
+  if (
+    classification === CommitClassification.NOISE &&
+    !intentResult &&
+    useOllama
+  ) {
+    const llmIntent = await extractIntentWithLlm(
+      diffText.slice(0, 3000),
+      "" // surrounding context — could be enhanced later
+    );
+    if (llmIntent) {
+      intentResult = {
+        intent: llmIntent,
+        source: IntentSource.LLM,
+        confidence: IntentConfidence.MEDIUM,
+      };
+    }
+  }
 
   for (const fileDiff of fileDiffs) {
     const filePath = fileDiff.newPath;

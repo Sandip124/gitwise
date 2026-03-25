@@ -571,7 +571,7 @@ gitwise init --full-history
 - [x] Embedding generation for future semantic search
 - [x] `wisegit recompute` CLI command
 - [x] Go + Rust language support (6 languages total)
-- [ ] Ollama integration into init pipeline (opt-in for NOISE commits)
+- [x] Ollama integration into init pipeline (opt-in via `--ollama` flag)
 
 ### Phase 3 — MCP Server + CLI
 - [ ] `get_file_decisions` with recovery levels

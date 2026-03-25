@@ -24,10 +24,12 @@ program
   .description("Index git history and extract decision intent")
   .option("--full-history", "Re-index all commits (even if already indexed)")
   .option("--path <path>", "Path to the git repository")
+  .option("--ollama", "Use Ollama for NOISE commit intent extraction (requires local Ollama)")
   .action(async (opts) => {
     await initCommand({
       fullHistory: opts.fullHistory,
       path: opts.path,
+      ollama: opts.ollama,
     });
   });
 

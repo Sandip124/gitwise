@@ -6,6 +6,7 @@ import { logger } from "../../shared/logger.js";
 export async function initCommand(options: {
   fullHistory?: boolean;
   path?: string;
+  ollama?: boolean;
 }): Promise<void> {
   const repoPath = resolve(options.path ?? process.cwd());
   const db = getDb();
@@ -15,6 +16,7 @@ export async function initCommand(options: {
       repoPath,
       db,
       fullHistory: options.fullHistory,
+      useOllama: options.ollama,
       onProgress: (current, total, sha) => {
         if (current % 50 === 0 || current === total) {
           process.stderr.write(
