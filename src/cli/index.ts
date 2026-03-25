@@ -7,6 +7,7 @@ import { historyCommand } from "./commands/history.js";
 import { serveCommand } from "./commands/serve.js";
 import { hookCommand } from "./commands/hook.js";
 import { setupCommand } from "./commands/setup.js";
+import { enrichCommand } from "./commands/enrich.js";
 
 const program = new Command();
 
@@ -78,6 +79,16 @@ program
       skipIndex: opts.skipIndex,
       global: opts.global,
     });
+  });
+
+program
+  .command("enrich")
+  .description(
+    "Fetch issue/PR context from GitHub/GitLab and enrich decision events"
+  )
+  .option("--path <path>", "Path to the git repository")
+  .action(async (opts) => {
+    await enrichCommand({ path: opts.path });
   });
 
 program.parse();

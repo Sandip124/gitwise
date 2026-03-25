@@ -39,10 +39,10 @@ export function calculateFreezeScore(
   const functionName = events[0].functionName ?? "";
 
   const gitScore = calculateGitSignals(events);
+  const issueScoreFromEvents = calculateIssueSignals(events);
 
-  // Phase 1: only git signals are computed from events.
-  // Other signals use provided values (default 0).
-  const issueScore = options?.issueSignalScore ?? 0;
+  // Issue signals: computed from ISSUE_ENRICHED events, or overridden
+  const issueScore = options?.issueSignalScore ?? issueScoreFromEvents;
   const codeStructScore = options?.codeStructureScore ?? 0;
   const testScore = options?.testSignalScore ?? 0;
   const structuralScore = options?.pagerank ?? 0;
@@ -154,6 +154,28 @@ function calculateGitSignals(events: DecisionEvent[]): number {
   ).length;
   if (highConfidenceCount > 0) {
     score += Math.min(highConfidenceCount * 0.05, 0.15);
+  }
+
+  return clamp(score, 0, 1);
+}
+
+/**
+ * Compute issue enrichment signal score (0–1) from ISSUE_ENRICHED events.
+ * Per Aranda & Venolia [3] and Aryani et al. [9].
+ */
+function calculateIssueSignals(events: DecisionEvent[]): number {
+  const issueEvents = events.filter(
+    (e) => e.eventType === EventType.ISSUE_ENRICHED
+  );
+
+  if (issueEvents.length === 0) return 0;
+
+  let score = 0;
+
+  for (const event of issueEvents) {
+    const meta = event.metadata as Record<string, unknown>;
+    const boost = (meta?.freezeBoost as number) ?? 0;
+    score += boost;
   }
 
   return clamp(score, 0, 1);
