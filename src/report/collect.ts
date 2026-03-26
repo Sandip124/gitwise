@@ -220,7 +220,14 @@ export function collectReportData(
     `).all(repoPath) as { source: string; target: string }[]
   );
 
-  // File-level aggregates for treemap (filtered)
+  // File-level aggregates (single grouped query instead of N+1)
+  const eventCountsByFile = new Map<string, number>(
+    (db.prepare(`
+      SELECT file_path, COUNT(*) as cnt
+      FROM decision_events WHERE repo_path = ?
+      GROUP BY file_path
+    `).all(repoPath) as { file_path: string; cnt: number }[]).map(r => [r.file_path, r.cnt])
+  );
   const fileScores = (
     db.prepare(`
       SELECT fs.file_path, AVG(fs.score) as avg_score,
@@ -230,37 +237,37 @@ export function collectReportData(
       GROUP BY fs.file_path
       ORDER BY avg_score DESC
     `).all(repoPath) as { file_path: string; avg_score: number; functions: number; theory_gap: number }[]
-  ).filter(r => !isIgnored(r.file_path)).map(r => {
-    const evtCount = (db.prepare(`SELECT COUNT(*) as cnt FROM decision_events WHERE file_path = ? AND repo_path = ?`).get(r.file_path, repoPath) as { cnt: number }).cnt;
-    return {
-      file: r.file_path,
-      avgScore: r.avg_score,
-      functions: r.functions,
-      events: evtCount,
-      theoryRisk: r.theory_gap ? "critical" : r.avg_score >= 0.5 ? "stable" : "open",
-    };
-  });
+  ).filter(r => !isIgnored(r.file_path)).map(r => ({
+    file: r.file_path,
+    avgScore: r.avg_score,
+    functions: r.functions,
+    events: eventCountsByFile.get(r.file_path) ?? 0,
+    theoryRisk: r.theory_gap ? "critical" : r.avg_score >= 0.5 ? "stable" : "open",
+  }));
 
-  // Freeze score histogram (0.0–0.1, 0.1–0.2, ..., 0.9–1.0)
+  // Freeze score histogram (uses already-filtered `scores` array for consistency)
   const scoreHistogram: { bucket: string; count: number }[] = [];
   for (let i = 0; i < 10; i++) {
     const lo = i / 10;
     const hi = (i + 1) / 10;
-    const count = (
-      db.prepare(`SELECT COUNT(*) as cnt FROM freeze_scores WHERE repo_path = ? AND score >= ? AND score < ?`).get(repoPath, lo, hi === 1.0 ? 1.01 : hi) as { cnt: number }
-    ).cnt;
+    const count = scores.filter(s => s.score >= lo && (hi === 1.0 ? s.score <= hi : s.score < hi)).length;
     scoreHistogram.push({ bucket: `${lo.toFixed(1)}–${hi.toFixed(1)}`, count });
   }
 
-  // Commit classification breakdown
-  const classificationBreakdown = (
-    db.prepare(`
-      SELECT classification, COUNT(*) as count
-      FROM decision_events
-      WHERE repo_path = ? AND classification IS NOT NULL
-      GROUP BY classification ORDER BY count DESC
-    `).all(repoPath) as { classification: string; count: number }[]
-  );
+  // Commit classification breakdown (filtered by ignore_paths)
+  const rawClassification = db.prepare(`
+    SELECT classification, file_path
+    FROM decision_events
+    WHERE repo_path = ? AND classification IS NOT NULL
+  `).all(repoPath) as { classification: string; file_path: string }[];
+  const clsCounts = new Map<string, number>();
+  for (const r of rawClassification) {
+    if (r.file_path && isIgnored(r.file_path)) continue;
+    clsCounts.set(r.classification, (clsCounts.get(r.classification) ?? 0) + 1);
+  }
+  const classificationBreakdown = [...clsCounts.entries()]
+    .map(([classification, count]) => ({ classification, count }))
+    .sort((a, b) => b.count - a.count);
 
   // Contributor-file matrix (filtered)
   const contributorFiles = (
@@ -273,41 +280,29 @@ export function collectReportData(
     `).all(repoPath) as { author: string; file_path: string; commits: number }[]
   ).filter(r => !isIgnored(r.file_path)).slice(0, 50).map(r => ({ author: r.author, file: r.file_path, commits: r.commits }));
 
-  // Individual commits with classification (for commit explorer)
-  const commits = (
-    db.prepare(`
-      SELECT commit_sha, commit_message, author, authored_at, classification,
-        COUNT(DISTINCT function_id) as functions_affected
-      FROM decision_events
-      WHERE repo_path = ? AND commit_message IS NOT NULL
-      GROUP BY commit_sha
-      ORDER BY authored_at DESC
-      LIMIT 200
-    `).all(repoPath) as { commit_sha: string; commit_message: string; author: string; authored_at: string; classification: string; functions_affected: number }[]
-  ).filter(r => r.commit_message).map(r => ({
-    sha: r.commit_sha.slice(0, 7),
-    message: r.commit_message.split("\n")[0].slice(0, 120),
-    author: r.author ?? "unknown",
-    date: r.authored_at?.slice(0, 10) ?? "",
-    classification: r.classification ?? "UNKNOWN",
-    functionsAffected: r.functions_affected,
-  }));
+  // Individual commits with classification (filtered by ignore_paths)
+  const rawCommits = db.prepare(`
+    SELECT commit_sha, commit_message, author, authored_at, classification,
+      file_path, COUNT(DISTINCT function_id) as functions_affected
+    FROM decision_events
+    WHERE repo_path = ? AND commit_message IS NOT NULL
+    GROUP BY commit_sha
+    ORDER BY authored_at DESC
+    LIMIT 500
+  `).all(repoPath) as { commit_sha: string; commit_message: string; author: string; authored_at: string; classification: string; file_path: string; functions_affected: number }[];
+  const commits = rawCommits
+    .filter(r => r.commit_message && (!r.file_path || !isIgnored(r.file_path)))
+    .slice(0, 200)
+    .map(r => ({
+      sha: r.commit_sha.slice(0, 7),
+      message: r.commit_message.split("\n")[0].slice(0, 120),
+      author: r.author ?? "unknown",
+      date: r.authored_at?.slice(0, 10) ?? "",
+      classification: r.classification ?? "UNKNOWN",
+      functionsAffected: r.functions_affected,
+    }));
 
   // All functions with scores (for expandable health lists)
-  const allFunctions = scores.map(s => {
-    const evtCount = (db.prepare(`SELECT COUNT(*) as cnt FROM decision_events WHERE function_id = (SELECT function_id FROM freeze_scores WHERE file_path = ? AND function_name = ? AND repo_path = ? LIMIT 1) AND repo_path = ?`).get(s.file_path, "", repoPath, repoPath) as { cnt: number } | undefined)?.cnt ?? 0;
-    return {
-      name: "",
-      file: s.file_path,
-      score: s.score,
-      events: evtCount,
-      theoryRisk: "open",
-      holders: 0,
-      activeHolders: 0,
-    };
-  });
-
-  // Better: query freeze_scores directly with all info
   const allFunctionsDetailed = (
     db.prepare(`
       SELECT function_name, file_path, score, theory_gap, pagerank

@@ -1,7 +1,6 @@
 import Database from "better-sqlite3";
 import { logger } from "../shared/logger.js";
 import { loadIgnorePaths, shouldIgnorePath } from "../shared/path-filter.js";
-import { parseFunctionId } from "../core/types.js";
 
 export interface TheoryHolder {
   author: string;
