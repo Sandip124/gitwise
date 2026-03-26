@@ -129,6 +129,9 @@ wisegit history <target> [--file <path>]         # Show decision timeline
 wisegit recompute [--path <dir>]                  # Recompute scores with PageRank + theory gaps
 wisegit override <fn> --file <f> --reason "..."  # Override a frozen function
 wisegit overrides                                # List active overrides
+wisegit sync                                     # Rebuild local cache from git + .wisegit/
+wisegit config list                              # View team configuration
+wisegit config set <key> <value>                 # Modify team policy
 wisegit branch-capture                           # Capture branch context from last merge
 wisegit branch-list                              # List all captured branch snapshots
 wisegit branch-recover <sha>                     # Recover context from old merge commit
@@ -216,6 +219,30 @@ The freeze score is **never stored directly** — it's derived by replaying the 
 
 Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for full citations.
 
+## Team Support
+
+wisegit uses a three-layer architecture — no separate "team mode" needed:
+
+| Layer | What | Shared? |
+|-------|------|---------|
+| **Deterministic base** | Commit classification, rule-based intent, git signals | Via git (automatic) |
+| **Team knowledge** | Enrichments, overrides, intents, branch contexts | Via `.wisegit/` (git-tracked) |
+| **Local cache** | SQLite at `~/.wisegit/wisegit.db` | Never (derived) |
+
+```
+.wisegit/                      # Tracked by git — shared with team
+├── config.json                # Team policy (thresholds, AI authors)
+├── enrichments.jsonl          # Issue enrichment cache
+├── overrides.jsonl            # Override audit trail
+└── branch-contexts.jsonl      # Branch merge snapshots
+```
+
+**JSONL format** — one JSON object per line. Concurrent appends produce no git merge conflicts.
+
+After a teammate pushes `.wisegit/` changes, run `wisegit sync` to import them into your local cache.
+
+See [TEAM-ROADMAP.md](TEAM-ROADMAP.md) for the full team architecture design.
+
 ## Architecture
 
 ```
@@ -280,6 +307,7 @@ Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for ful
 - [x] **Phase 1.5** — Issue enrichment (GitHub, GitLab) with Won't Fix/By Design detection, freeze boost signals
 - [x] **Phase 2** — Full freeze score: call graph + PageRank, theory gap detection (Naur death, forgotten patterns), co-change signals, Aranda signals, Ollama client, Go + Rust support
 - [x] **Phase 4** — Override system (mandatory reason, time-boxed expiry, audit trail), branch context preservation (post-merge hook, snapshot storage, recovery)
+- [x] **Phase A** — Shared team knowledge layer: `.wisegit/` directory with JSONL files for enrichments, overrides, branch contexts, and team config
 
 ## License
 
