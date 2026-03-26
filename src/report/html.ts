@@ -2,7 +2,7 @@ import { ReportData } from "./collect.js";
 
 export function generateHtmlReport(data: ReportData): string {
   const repoName = data.repoPath.split("/").pop() ?? data.repoPath;
-  const dataJson = JSON.stringify({
+  const dataJson = safeJson({
     commits: data.commits,
     allFunctions: data.allFunctions,
     folderTree: data.folderTree,
@@ -68,7 +68,7 @@ export function generateHtmlReport(data: ReportData): string {
       <div class="cls-chart">${renderClassificationBars(data.classificationBreakdown)}</div>
       <div class="cls-legend">${data.classificationBreakdown.map(c => {
         const total = data.classificationBreakdown.reduce((s, x) => s + x.count, 0);
-        return `<span class="cls-leg-item cls-${c.classification.toLowerCase()}">${c.classification}: ${c.count} (${(c.count / total * 100).toFixed(0)}%)</span>`;
+        return `<span class="cls-leg-item cls-${safeCls(c.classification)}">${esc(c.classification)}: ${c.count} (${(c.count / total * 100).toFixed(0)}%)</span>`;
       }).join("")}</div>
     </div>` : ""}
 
@@ -283,20 +283,24 @@ export function generateHtmlReport(data: ReportData): string {
 
 <script>
 var D=${dataJson};
-var COMMITS=${JSON.stringify(data.commits)};
-var FUNS=${JSON.stringify(data.allFunctions)};
-var CONTRIBUTORS=${JSON.stringify(data.contributors)};
+var COMMITS=${safeJson(data.commits)};
+var FUNS=${safeJson(data.allFunctions)};
+var CONTRIBUTORS=${safeJson(data.contributors)};
 ${SCRIPT}
 </script>
 </body></html>`;
 }
 
 function esc(s: string): string { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+/** Escape JSON for safe embedding in <script> — prevents </script> injection (XSS) */
+function safeJson(obj: unknown): string { return JSON.stringify(obj).replace(/</g, "\\u003c").replace(/>/g, "\\u003e"); }
 function fmt(n: number): string { return n.toLocaleString(); }
 function pct(n: number, t: number): string { return t === 0 ? "0%" : `${((n / t) * 100).toFixed(1)}%`; }
 function pctN(n: number, t: number): number { return t === 0 ? 0 : Math.max(1, (n / t) * 100); }
 function shortFile(f: string): string { const p = f.split("/"); return p.length > 2 ? `.../${p.slice(-2).join("/")}` : f; }
 function scColor(s: number): string { return s >= 0.8 ? "fill-red" : s >= 0.5 ? "fill-yellow" : "fill-green"; }
+const VALID_CLS = new Set(["structured", "descriptive", "noise", "unknown"]);
+function safeCls(c: string): string { const l = c.toLowerCase(); return VALID_CLS.has(l) ? l : "unknown"; }
 
 function renderClassificationBars(data: { classification: string; count: number }[]): string {
   const total = data.reduce((s, x) => s + x.count, 0);
@@ -305,8 +309,8 @@ function renderClassificationBars(data: { classification: string; count: number 
   return data.map(c => {
     const pctVal = (c.count / total * 100);
     return `<div class="cls-row">
-      <span class="cls-label cls-${c.classification.toLowerCase()}">${c.classification}</span>
-      <div class="cls-track"><div class="cls-fill cls-bg-${c.classification.toLowerCase()}" style="width:${Math.max(3, pctVal)}%"></div></div>
+      <span class="cls-label cls-${safeCls(c.classification)}">${esc(c.classification)}</span>
+      <div class="cls-track"><div class="cls-fill cls-bg-${safeCls(c.classification)}" style="width:${Math.max(3, pctVal)}%"></div></div>
       <span class="cls-val">${c.count} (${pctVal.toFixed(0)}%)</span>
     </div>`;
   }).join("");
@@ -548,11 +552,11 @@ function renderCommitPage(){
   var page=filtered.slice(start,start+commitPageSize);
   var html='';
   page.forEach(function(c){
-    html+='<div class="commit-row"><div class="commit-meta"><span class="commit-sha">'+c.sha+'</span><span class="cls-badge-'+c.classification.toLowerCase()+'">'+c.classification+'</span><span class="commit-fns">'+c.functionsAffected+' fn'+(c.functionsAffected!==1?'s':'')+'</span></div><div class="commit-msg">'+escH(c.message)+'</div><div class="commit-info">'+escH(c.author)+' — '+c.date+'</div></div>';
+    html+='<div class="commit-row"><div class="commit-meta"><span class="commit-sha">'+c.sha+'</span><span class="cls-badge-'+safeCls(c.classification)+'">'+c.classification+'</span><span class="commit-fns">'+c.functionsAffected+' fn'+(c.functionsAffected!==1?'s':'')+'</span></div><div class="commit-msg">'+escH(c.message)+'</div><div class="commit-info">'+escH(c.author)+' — '+c.date+'</div></div>';
   });
   if(!html)html='<div class="dim" style="padding:1rem;text-align:center">No commits match</div>';
   document.getElementById('commit-list').innerHTML=html;
-  document.getElementById('page-info').textContent=(start+1)+' \\u2013 '+Math.min(start+commitPageSize,filtered.length)+' of '+filtered.length;
+  document.getElementById('page-info').textContent=filtered.length===0?'0 of 0':((start+1)+' \\u2013 '+Math.min(start+commitPageSize,filtered.length)+' of '+filtered.length);
   document.getElementById('prev-btn').disabled=commitPage_===0;
   document.getElementById('next-btn').disabled=start+commitPageSize>=filtered.length;
 }
@@ -607,7 +611,7 @@ function toggleFolder(el){
   if(!children||!children.classList.contains('folder-children'))return;
   var isOpen=children.style.display!=='none';
   children.style.display=isOpen?'none':'block';
-  el.querySelector('.folder-toggle').innerHTML=isOpen?'\\u25bc':'\\u25b6';
+  el.querySelector('.folder-toggle').innerHTML=isOpen?'\\u25b6':'\\u25bc';
 }
 
 // === FILE EVENTS (paginated) ===
@@ -629,7 +633,7 @@ function renderFileEvents(idx){
   var slice=allEvts.slice(start,start+fePageSize);
   var html='';
   slice.forEach(function(e){
-    html+='<div class="fe-item"><span class="fe-sha">'+e.sha+'</span><span class="cls-badge-'+e.classification.toLowerCase()+'">'+e.classification+'</span><span class="fe-msg">'+escH(e.message)+'</span><span class="fe-meta">'+escH(e.author)+' \\u2014 '+e.date+'</span></div>';
+    html+='<div class="fe-item"><span class="fe-sha">'+e.sha+'</span><span class="cls-badge-'+safeCls(e.classification)+'">'+e.classification+'</span><span class="fe-msg">'+escH(e.message)+'</span><span class="fe-meta">'+escH(e.author)+' \\u2014 '+e.date+'</span></div>';
   });
   if(!html)html='<div class="dim" style="padding:.5rem">No events</div>';
   document.getElementById('fe-list-'+idx).innerHTML=html;
@@ -668,7 +672,7 @@ function doSearch(){
   if(cms.length>0){
     html+='<div class="sr-section">Commits ('+cms.length+')</div>';
     cms.slice(0,15).forEach(function(c){
-      html+='<div class="commit-row"><div class="commit-meta"><span class="commit-sha">'+c.sha+'</span><span class="cls-badge-'+c.classification.toLowerCase()+'">'+c.classification+'</span></div><div class="commit-msg">'+escH(c.message)+'</div><div class="commit-info">'+escH(c.author)+' \\u2014 '+c.date+'</div></div>';
+      html+='<div class="commit-row"><div class="commit-meta"><span class="commit-sha">'+c.sha+'</span><span class="cls-badge-'+safeCls(c.classification)+'">'+c.classification+'</span></div><div class="commit-msg">'+escH(c.message)+'</div><div class="commit-info">'+escH(c.author)+' \\u2014 '+c.date+'</div></div>';
     });
   }
   var cbs=CONTRIBUTORS.filter(function(c){return c.author.toLowerCase().indexOf(q)!==-1});
@@ -682,4 +686,6 @@ function doSearch(){
   res.innerHTML=html;
 }
 function escH(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
+var _validCls={structured:1,descriptive:1,noise:1,unknown:1};
+function safeCls(c){var l=(c||'').toLowerCase();return _validCls[l]?l:'unknown'}
 `;
