@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { execSync } from "node:child_process";
 import { getDb, closeDb } from "../../db/database.js";
 import {
   captureBranchContext,
@@ -6,6 +7,8 @@ import {
   getBranchSnapshots,
 } from "../../pipeline/branch-context.js";
 import { logger } from "../../shared/logger.js";
+import { appendJsonl } from "../../shared/jsonl.js";
+import { getWisegitPaths, SharedBranchContext } from "../../shared/team-types.js";
 
 export async function branchCaptureCommand(options: {
   path?: string;
@@ -16,12 +19,32 @@ export async function branchCaptureCommand(options: {
   try {
     const snapshot = await captureBranchContext(repoPath, db);
     if (snapshot) {
+      // Write to .wisegit/branch-contexts.jsonl for team sharing
+      const paths = getWisegitPaths(repoPath);
+      let mergedBy: string;
+      try {
+        mergedBy = execSync("git config user.email", { encoding: "utf-8" }).trim();
+      } catch {
+        mergedBy = "unknown";
+      }
+      const shared: SharedBranchContext = {
+        branch: snapshot.branch,
+        merged_at: snapshot.mergedAt,
+        merge_commit: "", // Could be extracted from git
+        merged_by: mergedBy,
+        purpose: snapshot.purpose,
+        files_changed: snapshot.filesChanged,
+        commit_count: snapshot.commitCount,
+      };
+      appendJsonl(paths.branchContexts, shared);
+
       console.log(`Branch context captured:`);
       console.log(`  Branch:   ${snapshot.branch}`);
       console.log(`  Merged:   ${snapshot.mergedInto}`);
       console.log(`  Files:    ${snapshot.filesChanged.length}`);
       console.log(`  Commits:  ${snapshot.commitCount}`);
       console.log(`  Purpose:  ${snapshot.purpose}`);
+      console.log(`  Wrote to .wisegit/branch-contexts.jsonl`);
     } else {
       console.log("HEAD is not a merge commit. Nothing to capture.");
     }

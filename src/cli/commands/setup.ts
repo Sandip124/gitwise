@@ -11,6 +11,10 @@ import { getDb, closeDb } from "../../db/database.js";
 import { runMigrations } from "../../db/migrator.js";
 import { runInitPipeline } from "../../pipeline/init-pipeline.js";
 import { logger } from "../../shared/logger.js";
+import {
+  getWisegitPaths,
+  DEFAULT_TEAM_CONFIG,
+} from "../../shared/team-types.js";
 
 const CLAUDE_MD_RULES = `
 ## wisegit — Decision Protection Rules
@@ -69,6 +73,22 @@ export async function setupCommand(options: {
   const db = getDb();
   runMigrations(db);
   console.log("  \u2713 Database ready (SQLite)");
+
+  // Create .wisegit/ shared directory + config.json
+  const paths = getWisegitPaths(repoPath);
+  if (!existsSync(paths.dir)) {
+    const { mkdirSync } = await import("node:fs");
+    mkdirSync(paths.dir, { recursive: true });
+  }
+  if (safeToWrite(paths.config) && !existsSync(paths.config)) {
+    writeFileSync(
+      paths.config,
+      JSON.stringify(DEFAULT_TEAM_CONFIG, null, 2) + "\n"
+    );
+    console.log("  \u2713 Created .wisegit/ shared directory + config.json");
+  } else if (existsSync(paths.config)) {
+    console.log("  \u2713 .wisegit/ directory already exists");
+  }
 
   // Create .mcp.json for Claude Code
   const mcpConfigPath = resolve(repoPath, ".mcp.json");
@@ -135,13 +155,19 @@ export async function setupCommand(options: {
     console.log("  \u26a0 Skipped CLAUDE.md (path is a symlink)");
   }
 
-  // Add .mcp.json to .gitignore
+  // Add .mcp.json to .gitignore (local paths — not shared)
+  // Note: .wisegit/ is NOT gitignored — it's shared team knowledge
   const gitignorePath = resolve(repoPath, ".gitignore");
   if (safeToWrite(gitignorePath) && existsSync(gitignorePath)) {
-    const gitignore = readFileSync(gitignorePath, "utf-8");
+    let gitignore = readFileSync(gitignorePath, "utf-8");
+    let modified = false;
     if (!gitignore.includes(".mcp.json")) {
-      writeFileSync(gitignorePath, gitignore.trimEnd() + "\n.mcp.json\n");
-      console.log("  \u2713 Added .mcp.json to .gitignore");
+      gitignore = gitignore.trimEnd() + "\n.mcp.json\n";
+      modified = true;
+    }
+    if (modified) {
+      writeFileSync(gitignorePath, gitignore);
+      console.log("  \u2713 Updated .gitignore");
     }
   }
 

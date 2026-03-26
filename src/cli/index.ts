@@ -11,6 +11,8 @@ import { enrichCommand } from "./commands/enrich.js";
 import { recomputeCommand } from "./commands/recompute.js";
 import { overrideCommand } from "./commands/override.js";
 import { branchCaptureCommand, branchListCommand, branchRecoverCommand } from "./commands/branch.js";
+import { syncCommand } from "./commands/sync.js";
+import { configCommand } from "./commands/config.js";
 
 const program = new Command();
 
@@ -156,6 +158,24 @@ program
   .option("--path <path>", "Path to the git repository")
   .action(async (sha: string, opts) => {
     await branchRecoverCommand(sha, { path: opts.path });
+  });
+
+program
+  .command("sync")
+  .description(
+    "Rebuild local cache from git history + .wisegit/ shared files (run after git pull)"
+  )
+  .option("--path <path>", "Path to the git repository")
+  .action(async (opts) => {
+    await syncCommand({ path: opts.path });
+  });
+
+program
+  .command("config <action> [args...]")
+  .description("View or modify team config (.wisegit/config.json)")
+  .option("--path <path>", "Path to the git repository")
+  .action(async (action: string, args: string[], opts) => {
+    await configCommand(action, args, { path: opts.path });
   });
 
 program.parse();

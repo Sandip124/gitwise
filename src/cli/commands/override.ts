@@ -13,6 +13,8 @@ import {
   IntentSource,
   IntentConfidence,
 } from "../../core/types.js";
+import { appendJsonl } from "../../shared/jsonl.js";
+import { getWisegitPaths, SharedOverride } from "../../shared/team-types.js";
 import { logger } from "../../shared/logger.js";
 
 /**
@@ -200,6 +202,22 @@ export async function overrideCommand(
       },
     };
     eventStore.appendEvents([overrideEvent]);
+
+    // Write to .wisegit/overrides.jsonl for team sharing
+    const paths = getWisegitPaths(repoPath);
+    const currentScore = events.length > 0 ? calculateFreezeScore(events) : null;
+    const sharedOverride: SharedOverride = {
+      id: override.id,
+      function_id: functionId,
+      created_by: author,
+      created_at: new Date().toISOString(),
+      reason: options.reason,
+      expires_at: expiresAt?.toISOString() ?? null,
+      scope: "function",
+      previous_score: currentScore?.score ?? null,
+      approved_by: null,
+    };
+    appendJsonl(paths.overrides, sharedOverride);
 
     // Recompute freeze score (override resets protection)
     const allEvents = eventStore.getEventsForFunction(functionId, repoPath);
