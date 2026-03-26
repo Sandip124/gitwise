@@ -219,7 +219,23 @@ The freeze score is **never stored directly** — it's derived by replaying the 
 | Naur Theory | 0.10 | Global patterns, intentional contradictions, removal cost |
 | Aranda Signals | 0.05 | Forgotten patterns, timeline gaps, broken issue links |
 
-Academic grounding: 9 published papers. See [REFERENCE.md](REFERENCE.md) for full citations.
+Academic grounding: 12 published papers. See [REFERENCE.md](REFERENCE.md) for full citations.
+
+## Legacy Codebase Evolution
+
+wisegit is designed for codebases that have accumulated years of intentional decisions. The freeze score doesn't mean "never change this" — it means "understand these decisions before you change it."
+
+**Progressive migration, not shiny rewrites.** Per Távora [12]: the business rules in messy code are *correct and valuable*. The technical debt is in the structure, not the decisions. wisegit protects the decisions while you fix the structure.
+
+| Stage | How wisegit helps |
+|-------|-------------------|
+| **Understand AS-IS** | `wisegit audit` shows what's intentional. `wisegit team-health` shows where institutional knowledge is lost. |
+| **Protect during refactoring** | Manifests tell developers + AI which behaviors were deliberately chosen |
+| **Record rationale** | Override reasons persist in `.wisegit/overrides.jsonl` — not buried in Slack |
+| **Preserve migration context** | Branch snapshots record what was replaced and what should never return |
+| **Track cross-boundary deps** | Co-change signals detect coupling between legacy and replacement code |
+
+See [REFERENCE.md](REFERENCE.md) for the full legacy evolution section with academic grounding (12 published papers).
 
 ## Team Support
 

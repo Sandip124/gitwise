@@ -385,6 +385,78 @@ Everything local. Zero bytes sent to any external service.
 
 ---
 
+## Legacy Codebase Evolution
+
+### The Real Problem: Progressive Evolution, Not Shiny Rewrites
+
+wisegit was born from a specific pain: Claude Code removing a manually-tested `sleep(350)`
+because it looked like dead code. But the deeper problem is much larger than AI guardrails.
+It's about **how teams safely evolve codebases that have accumulated years of intentional
+decisions — decisions that live in git history but are invisible to the tools and people
+making changes today.**
+
+This is the challenge Távora [12] documented in a case study of a 10-year-old PHP
+consortium system: the codebase had high business value and was operationally critical,
+but low technical quality — high coupling, low cohesion, no architectural layering. The
+instinct is to rewrite it. The reality is that the business rules embedded in that messy
+code are *correct and valuable*. The technical debt is in the structure, not in the
+decisions. Rewriting risks losing the decisions while fixing the structure.
+
+wisegit addresses exactly this gap. **The freeze score doesn't mean "never change this."
+It means "this code carries intentional decisions — understand them before you change it,
+and here's what we know."** An override isn't a bypass; it's a documented, reasoned
+decision to proceed with full knowledge of what existed before.
+
+### How wisegit Enables Progressive Migration
+
+The right approach to legacy modernization isn't "rewrite because the new thing shines."
+It's progressive migration: analyze AS-IS, define TO-BE, bridge with adapters, migrate
+one module at a time, keep the system running throughout. Távora [12] demonstrated this
+with the Adapter pattern — an internal API built in Laravel that wraps the legacy PHP,
+allowing new code to coexist with old code during transition.
+
+wisegit supports every stage of this process:
+
+**1. Understanding the AS-IS state.** `wisegit audit <file>` shows the decision manifest
+— which functions are frozen, stable, or open. `wisegit team-health` shows where
+institutional knowledge has been lost.
+
+**2. Protecting verified decisions during refactoring.** The decision manifest tells
+developers — and AI agents — which behaviors were deliberately chosen. The `sleep(350)`
+isn't dead code; it's a verified Stripe race condition fix.
+
+**3. Recording the refactoring rationale.** Override reasons in `.wisegit/overrides.jsonl`
+persist permanently. Six months later, the answer isn't in a Slack thread — it's in
+the append-only override log.
+
+**4. Preserving branch-level migration context.** When `feat/avalonia` is merged and
+deleted, `.wisegit/branch-contexts.jsonl` records what was replaced, the new standard,
+and what should never be reintroduced.
+
+**5. Tracking co-change dependencies across the migration boundary.** Ying et al. [5]
+showed cross-language co-changes are the most surprising dependencies — exactly what
+appears at the boundary between legacy code and its replacement.
+
+### Legacy-Specific Signals
+
+| Signal | Weight | Legacy Relevance |
+|---|---|---|
+| "Forgotten" pattern: burst of activity + 12mo silence | +0.20 | Bug fixed urgently, module never touched again. Fix is load-bearing. [3] |
+| Timeline discontinuity (no electronic trace) | +0.15 | Changes before issue trackers were adopted. Gaps = protect more. [3] |
+| All contributors inactive (full Naur death) | +0.30 | Original team gone. Nobody holds the theory. Highest risk. [2] |
+| Code contradicts best practice intentionally | +0.30 | "Wrong" approach chosen because "right" didn't work. [2] |
+| Magic number / non-obvious value | +0.15 | Tuned constants from production experience look arbitrary but aren't. [6] |
+| Branch context: `do_not_reintroduce` list | +0.35 | Pattern deliberately removed in migration. Reintroduction undoes verified work. |
+
+### The Blame-Free Approach
+
+The freeze score carries no judgment about code quality — it measures **intentionality
+and risk**. A function with a high freeze score isn't "good code" or "bad code." It's code
+that carries decisions the team should understand before changing. The override system
+requires a reason but never blocks: wisegit's job is to inform, not to prevent.
+
+---
+
 ## Intentional Override System
 
 ```bash
@@ -627,6 +699,7 @@ gitwise is defensible at every layer:
 | Past defects + incident links best predict future risk | Knab et al. [7] |
 | Temporal + spatial locality are real and measurable | Kim et al. [8] |
 | Domain coupling predicts dependencies without source analysis | Aryani et al. [9] |
+| Legacy evolution requires preserving decisions, not just structure | Távora [12] |
 
 ---
 
@@ -663,6 +736,9 @@ gitwise is defensible at every layer:
 | Branch context preservation [5][9] | ❌ | ❌ | ❌ | ✅ |
 | Override audit trail | ❌ | ❌ | ❌ | ✅ |
 | Dynamic event sourcing [8] | ❌ | ❌ | partial | ✅ |
+| Legacy migration support [12] | ❌ | ❌ | ❌ | ✅ |
+| Team theory distribution tracking [2] | ❌ | ❌ | ❌ | ✅ |
+| AI vs human decision origin [2][11] | ❌ | ❌ | ❌ | ✅ |
 
 ---
 
@@ -733,3 +809,13 @@ gitwise is defensible at every layer:
     for hybrid/legacy codebases, and co-change signals for components with
     no static dependency but shared domain variables. Average accuracy 0.73,
     93% of queries return at least one correct architectural dependency.
+
+[12] João Victor Dias Távora (2025).
+    *A Proposal for Legacy System Reengineering and Refactoring:
+    A Case Study Applied to a Consortium Software.*
+    Bachelor's Thesis, Instituto Brasileiro de Ensino, Desenvolvimento
+    e Pesquisa (IDP).
+    Source for: progressive migration over rewrites, Adapter pattern for
+    legacy coexistence, understanding AS-IS before defining TO-BE,
+    preserving business decisions embedded in technically-poor code,
+    blame-free approach to legacy evolution.
