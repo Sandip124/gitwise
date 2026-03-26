@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { getDb, closeDb } from "../../db/database.js";
 import { detectRemote } from "../../git/remote-detector.js";
 import { IssueEnricher } from "../../issues/issue-enricher.js";
@@ -15,7 +15,7 @@ import {
 
 function getAuthor(): string {
   try {
-    return execSync("git config user.email", { encoding: "utf-8" }).trim();
+    return execFileSync("git", ["config", "user.email"], { encoding: "utf-8" }).trim();
   } catch {
     return process.env.USER ?? "unknown";
   }

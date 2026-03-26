@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { OverrideStore } from "../../db/override-store.js";
 import { EventStore } from "../../db/event-store.js";
 import { FreezeStore } from "../../db/freeze-store.js";
@@ -27,7 +27,7 @@ function parseDuration(duration: string): number | null {
 
 function getAuthor(): string {
   try {
-    return execSync("git config user.name", { encoding: "utf-8" }).trim();
+    return execFileSync("git", ["config", "user.name"], { encoding: "utf-8" }).trim();
   } catch {
     return process.env.USER ?? "ai-agent";
   }

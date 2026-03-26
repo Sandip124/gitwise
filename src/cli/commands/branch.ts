@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { getDb, closeDb } from "../../db/database.js";
 import {
   captureBranchContext,
@@ -23,7 +23,7 @@ export async function branchCaptureCommand(options: {
       const paths = getWisegitPaths(repoPath);
       let mergedBy: string;
       try {
-        mergedBy = execSync("git config user.email", { encoding: "utf-8" }).trim();
+        mergedBy = execFileSync("git", ["config", "user.email"], { encoding: "utf-8" }).trim();
       } catch {
         mergedBy = "unknown";
       }

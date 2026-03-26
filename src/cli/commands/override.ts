@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { getDb, closeDb } from "../../db/database.js";
 import { OverrideStore } from "../../db/override-store.js";
 import { EventStore } from "../../db/event-store.js";
@@ -42,7 +42,7 @@ function parseDuration(duration: string): number | null {
  */
 function getGitAuthor(): string {
   try {
-    return execSync("git config user.name", { encoding: "utf-8" }).trim();
+    return execFileSync("git", ["config", "user.name"], { encoding: "utf-8" }).trim();
   } catch {
     return process.env.USER ?? "unknown";
   }
