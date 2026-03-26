@@ -1,5 +1,9 @@
 # wisegit
 
+[![npm](https://img.shields.io/npm/v/@sandip124/wisegit)](https://www.npmjs.com/package/@sandip124/wisegit)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.Sandip124%2Fwisegit-blue)](https://registry.modelcontextprotocol.io/v0.1/servers?search=wisegit)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > *"Don't take a fence down until you know the reason it was put up."*
 > — G.K. Chesterton
 
@@ -8,6 +12,22 @@
 When Claude Code (or any MCP-compatible agent) is about to edit a file, wisegit injects a **decision manifest** showing which functions are frozen, stable, or open — so the AI respects what was intentional, not just what compiles.
 
 **Zero config. Zero external services. Everything local.**
+
+### Install
+
+```bash
+# Set up any repo (one command)
+npx @sandip124/wisegit setup
+
+# Or add as MCP server globally
+claude mcp add wisegit -- npx @sandip124/wisegit serve
+```
+
+### Published on
+
+- **npm:** [@sandip124/wisegit](https://www.npmjs.com/package/@sandip124/wisegit)
+- **MCP Registry:** [io.github.Sandip124/wisegit](https://registry.modelcontextprotocol.io/v0.1/servers?search=wisegit)
+- **GitHub:** [Sandip124/wisegit](https://github.com/Sandip124/wisegit)
 
 ## The Problem
 
