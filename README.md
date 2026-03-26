@@ -132,6 +132,8 @@ wisegit overrides                                # List active overrides
 wisegit sync                                     # Rebuild local cache from git + .wisegit/
 wisegit config list                              # View team configuration
 wisegit config set <key> <value>                 # Modify team policy
+wisegit team-status                              # Team overview: enrichments, overrides, contributors
+wisegit team-health                              # Theory health: healthy/fragile/critical functions
 wisegit branch-capture                           # Capture branch context from last merge
 wisegit branch-list                              # List all captured branch snapshots
 wisegit branch-recover <sha>                     # Recover context from old merge commit
@@ -308,6 +310,9 @@ See [TEAM-ROADMAP.md](TEAM-ROADMAP.md) for the full team architecture design.
 - [x] **Phase 2** — Full freeze score: call graph + PageRank, theory gap detection (Naur death, forgotten patterns), co-change signals, Aranda signals, Ollama client, Go + Rust support
 - [x] **Phase 4** — Override system (mandatory reason, time-boxed expiry, audit trail), branch context preservation (post-merge hook, snapshot storage, recovery)
 - [x] **Phase A** — Shared team knowledge layer: `.wisegit/` directory with JSONL files for enrichments, overrides, branch contexts, and team config
+- [x] **Phase B** — Team-aware manifests: theory holder tracking, risk levels (healthy/fragile/critical), team status + health commands
+- [x] **Phase C** — AI-era adaptations: commit origin detection (HUMAN/AI_REVIEWED/AI_UNREVIEWED), origin-weighted freeze scores
+- [x] **Phase D** — Override approval workflow, team health metrics
 
 ## License
 

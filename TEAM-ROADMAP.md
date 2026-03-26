@@ -31,10 +31,10 @@ SQLite at `~/.wisegit/wisegit.db` — rebuilt from git history + `.wisegit/` fil
 
 ## Implementation Phases
 
-### Phase A: Shared Knowledge Layer — ACTIVE
-### Phase B: Team-Aware Manifests
-### Phase C: AI-Era Adaptations
-### Phase D: Advanced Team Features
+### Phase A: Shared Knowledge Layer — DONE
+### Phase B: Team-Aware Manifests — DONE
+### Phase C: AI-Era Adaptations — DONE
+### Phase D: Advanced Team Features — DONE
 
 See the full roadmap document for detailed specifications.
 
