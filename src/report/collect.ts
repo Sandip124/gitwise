@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { getRepoTheoryHealth } from "../graph/theory-holders.js";
 import { detectCommitOrigin, CommitOrigin } from "../core/commit-origin.js";
+import { loadIgnorePaths, shouldIgnorePath } from "../shared/path-filter.js";
 
 export interface ReportData {
   repoPath: string;
@@ -65,6 +66,8 @@ export function collectReportData(
   repoPath: string
 ): ReportData {
   const now = new Date().toISOString();
+  const ignorePaths = loadIgnorePaths(repoPath);
+  const isIgnored = (fp: string) => shouldIgnorePath(fp, ignorePaths);
 
   // Overview counts
   const totalCommits = (
@@ -88,8 +91,9 @@ export function collectReportData(
     db.prepare(`SELECT language, COUNT(*) as count FROM function_chunks WHERE repo_path = ? GROUP BY language ORDER BY count DESC`).all(repoPath) as { language: string; count: number }[]
   );
 
-  // Freeze score distribution
-  const scores = db.prepare(`SELECT score FROM freeze_scores WHERE repo_path = ?`).all(repoPath) as { score: number }[];
+  // Freeze score distribution (filtered by ignore_paths)
+  const allScores = db.prepare(`SELECT score, file_path FROM freeze_scores WHERE repo_path = ?`).all(repoPath) as { score: number; file_path: string }[];
+  const scores = allScores.filter(s => !isIgnored(s.file_path));
   const freezeDistribution = { frozen: 0, stable: 0, open: 0 };
   for (const { score } of scores) {
     if (score >= 0.80) freezeDistribution.frozen++;
@@ -97,10 +101,10 @@ export function collectReportData(
     else freezeDistribution.open++;
   }
 
-  // Top frozen functions
+  // Top frozen functions (filtered)
   const topFrozen = (
-    db.prepare(`SELECT function_id, function_name, file_path, score FROM freeze_scores WHERE repo_path = ? ORDER BY score DESC LIMIT 15`).all(repoPath) as { function_id: string; function_name: string; file_path: string; score: number }[]
-  ).map(r => ({ functionId: r.function_id, name: r.function_name, file: r.file_path, score: r.score }));
+    db.prepare(`SELECT function_id, function_name, file_path, score FROM freeze_scores WHERE repo_path = ? ORDER BY score DESC LIMIT 50`).all(repoPath) as { function_id: string; function_name: string; file_path: string; score: number }[]
+  ).filter(r => !isIgnored(r.file_path)).slice(0, 15).map(r => ({ functionId: r.function_id, name: r.function_name, file: r.file_path, score: r.score }));
 
   // Theory health
   const health = getRepoTheoryHealth(db, repoPath);
@@ -135,19 +139,19 @@ export function collectReportData(
   }
   const originBreakdown = [...originCounts.entries()].map(([origin, count]) => ({ origin, count }));
 
-  // Top files by event count
+  // Top files by event count (filtered)
   const topFiles = (
     db.prepare(`
       SELECT file_path, COUNT(*) as events, COUNT(DISTINCT function_id) as functions
       FROM decision_events
-      WHERE repo_path = ? GROUP BY file_path ORDER BY events DESC LIMIT 15
+      WHERE repo_path = ? GROUP BY file_path ORDER BY events DESC LIMIT 50
     `).all(repoPath) as { file_path: string; events: number; functions: number }[]
-  ).map(r => ({ file: r.file_path, events: r.events, functions: r.functions }));
+  ).filter(r => !isIgnored(r.file_path)).slice(0, 15).map(r => ({ file: r.file_path, events: r.events, functions: r.functions }));
 
-  // PageRank top functions
+  // PageRank top functions (filtered)
   const topPageRank = (
-    db.prepare(`SELECT function_name, file_path, pagerank FROM freeze_scores WHERE repo_path = ? AND pagerank > 0 ORDER BY pagerank DESC LIMIT 10`).all(repoPath) as { function_name: string; file_path: string; pagerank: number }[]
-  ).map(r => ({ name: r.function_name, file: r.file_path, score: r.pagerank }));
+    db.prepare(`SELECT function_name, file_path, pagerank FROM freeze_scores WHERE repo_path = ? AND pagerank > 0 ORDER BY pagerank DESC LIMIT 30`).all(repoPath) as { function_name: string; file_path: string; pagerank: number }[]
+  ).filter(r => !isIgnored(r.file_path)).slice(0, 10).map(r => ({ name: r.function_name, file: r.file_path, score: r.pagerank }));
 
   // Contributors
   const sixMonthsAgo = new Date();
@@ -180,7 +184,7 @@ export function collectReportData(
     `).all(repoPath) as { source: string; target: string }[]
   );
 
-  // File-level aggregates for treemap
+  // File-level aggregates for treemap (filtered)
   const fileScores = (
     db.prepare(`
       SELECT fs.file_path, AVG(fs.score) as avg_score,
@@ -190,7 +194,7 @@ export function collectReportData(
       GROUP BY fs.file_path
       ORDER BY avg_score DESC
     `).all(repoPath) as { file_path: string; avg_score: number; functions: number; theory_gap: number }[]
-  ).map(r => {
+  ).filter(r => !isIgnored(r.file_path)).map(r => {
     const evtCount = (db.prepare(`SELECT COUNT(*) as cnt FROM decision_events WHERE file_path = ? AND repo_path = ?`).get(r.file_path, repoPath) as { cnt: number }).cnt;
     return {
       file: r.file_path,
@@ -222,16 +226,16 @@ export function collectReportData(
     `).all(repoPath) as { classification: string; count: number }[]
   );
 
-  // Contributor-file matrix (top 50 combinations)
+  // Contributor-file matrix (filtered)
   const contributorFiles = (
     db.prepare(`
       SELECT author, file_path, COUNT(DISTINCT commit_sha) as commits
       FROM decision_events
       WHERE repo_path = ? AND author IS NOT NULL
       GROUP BY author, file_path
-      ORDER BY commits DESC LIMIT 50
+      ORDER BY commits DESC LIMIT 100
     `).all(repoPath) as { author: string; file_path: string; commits: number }[]
-  ).map(r => ({ author: r.author, file: r.file_path, commits: r.commits }));
+  ).filter(r => !isIgnored(r.file_path)).slice(0, 50).map(r => ({ author: r.author, file: r.file_path, commits: r.commits }));
 
   return {
     repoPath,
