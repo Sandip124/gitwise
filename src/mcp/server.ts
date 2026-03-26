@@ -10,6 +10,7 @@ import { getTheoryGaps } from "./tools/get-theory-gaps.js";
 import { getBranchContext } from "./tools/get-branch-context.js";
 import { extractIntentForFunction } from "./tools/extract-intent.js";
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { syncSharedLayer } from "../pipeline/sync-pipeline.js";
 import { logger } from "../shared/logger.js";
 import { GitwiseError } from "../shared/errors.js";
 
@@ -56,6 +57,21 @@ function sanitizeError(err: unknown): string {
  * - search_decisions: keyword search across all decisions
  */
 export function createMcpServer(db: Database.Database): McpServer {
+  /**
+   * Auto-sync .wisegit/ shared files before serving data.
+   * Fast no-op (< 1ms) when nothing changed. Only syncs when
+   * JSONL files are newer than last sync.
+   */
+  function autoSync(repoPath?: string): void {
+    if (repoPath) {
+      try {
+        syncSharedLayer(db, repoPath);
+      } catch {
+        // Sync failure should never block tool calls
+      }
+    }
+  }
+
   const server = new McpServer({
     name: "wisegit",
     version: "0.1.0",
@@ -73,6 +89,7 @@ export function createMcpServer(db: Database.Database): McpServer {
     },
     async ({ filePath, repoPath }) => {
       try {
+        autoSync(repoPath);
         const result = getFileDecisions(db, filePath, repoPath);
         return {
           content: [{ type: "text" as const, text: result.manifest }],
@@ -104,6 +121,7 @@ export function createMcpServer(db: Database.Database): McpServer {
     },
     async ({ filePath, functionName, repoPath }) => {
       try {
+        autoSync(repoPath);
         const result = getFreezeScoreForFunction(
           db,
           filePath,
@@ -138,6 +156,7 @@ export function createMcpServer(db: Database.Database): McpServer {
     },
     async ({ query, repoPath, limit }) => {
       try {
+        autoSync(repoPath);
         const results = searchDecisions(db, query, repoPath, limit);
 
         if (results.length === 0) {

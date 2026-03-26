@@ -14,8 +14,10 @@ wisegit init --path "$(git rev-parse --show-toplevel)" 2>/dev/null || true
 `;
 
 const POST_MERGE_HOOK = `#!/bin/sh
-# wisegit post-merge hook — capture branch context at merge time
-wisegit branch-capture --path "$(git rev-parse --show-toplevel)" 2>/dev/null || true
+# wisegit post-merge hook — sync team knowledge + capture branch context
+REPO="$(git rev-parse --show-toplevel)"
+wisegit sync --path "$REPO" 2>/dev/null || true
+wisegit branch-capture --path "$REPO" 2>/dev/null || true
 `;
 
 /**
