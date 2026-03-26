@@ -14,6 +14,7 @@ import { branchCaptureCommand, branchListCommand, branchRecoverCommand } from ".
 import { syncCommand } from "./commands/sync.js";
 import { configCommand } from "./commands/config.js";
 import { teamStatusCommand, teamTheoryHealthCommand } from "./commands/team.js";
+import { reportCommand } from "./commands/report.js";
 
 const program = new Command();
 
@@ -177,6 +178,17 @@ program
   .option("--path <path>", "Path to the git repository")
   .action(async (action: string, args: string[], opts) => {
     await configCommand(action, args, { path: opts.path });
+  });
+
+program
+  .command("report")
+  .description(
+    "Generate an HTML report with freeze scores, theory health, timeline, and dependency insights"
+  )
+  .option("--path <path>", "Path to the git repository")
+  .option("--output <file>", "Output file path (default: wisegit-report.html in repo root)")
+  .action(async (opts) => {
+    await reportCommand({ path: opts.path, output: opts.output });
   });
 
 program
