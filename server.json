@@ -1,0 +1,60 @@
+{
+  "name": "wisegit",
+  "description": "MCP server that extracts decision intent from git history and protects intentional code from AI modification. Serves freeze scores, theory gaps, and decision manifests before any file edit.",
+  "repository": "https://github.com/Sandip124/wisegit",
+  "homepage": "https://github.com/Sandip124/wisegit#readme",
+  "license": "MIT",
+  "runtime": "node",
+  "mcpVersion": "1.0",
+  "tools": [
+    {
+      "name": "get_file_decisions",
+      "description": "Get the decision manifest for a file — freeze scores, intent history, recovery levels, and override status for all tracked functions."
+    },
+    {
+      "name": "get_freeze_score",
+      "description": "Get the freeze score and signal breakdown for a specific function."
+    },
+    {
+      "name": "get_function_history",
+      "description": "Get the full chronological decision timeline for a function."
+    },
+    {
+      "name": "get_theory_gaps",
+      "description": "Get functions where original decision rationale may be unrecoverable."
+    },
+    {
+      "name": "get_branch_context",
+      "description": "Get branch merge history — what was migrated and why."
+    },
+    {
+      "name": "search_decisions",
+      "description": "Search past decisions by keyword across the repository."
+    },
+    {
+      "name": "create_override",
+      "description": "Override a frozen function with mandatory reason and optional expiry."
+    },
+    {
+      "name": "extract_intent",
+      "description": "Extract intent for NOISE commits using the host LLM via MCP sampling."
+    }
+  ],
+  "resources": [
+    {
+      "uriTemplate": "wisegit://manifest/{+filePath}",
+      "description": "Decision manifest for a source file."
+    }
+  ],
+  "prompts": [
+    {
+      "name": "check_before_edit",
+      "description": "Protection workflow — check decision manifest before editing a file."
+    }
+  ],
+  "install": {
+    "npm": "npx wisegit serve"
+  },
+  "categories": ["developer-tools", "git", "code-quality"],
+  "tags": ["git", "intent", "decision-protection", "freeze-score", "theory-preservation", "legacy", "mcp"]
+}

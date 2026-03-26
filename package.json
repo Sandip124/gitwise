@@ -10,6 +10,7 @@
   "files": [
     "dist",
     "sql",
+    "server.json",
     "REFERENCE.md"
   ],
   "scripts": {
