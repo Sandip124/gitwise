@@ -11,3 +11,12 @@ coverage/
 .mcp_publisher_token
 .npmrc
 *.token
+
+# Per-developer MCP config (contains local paths)
+.mcp.json
+
+# Generated report (can be regenerated)
+wisegit-report.html
+
+# wisegit generates CLAUDE.md per-repo — don't commit our own test one
+CLAUDE.md

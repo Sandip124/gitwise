@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "enrichment_staleness_days": 30,
+  "override_requires_approval": false,
+  "override_default_expiry_days": 7,
+  "ignore_paths": [
+    "vendor/",
+    "node_modules/",
+    "dist/",
+    "bin/",
+    "obj/"
+  ],
+  "ai_commit_authors": [
+    "dependabot[bot]",
+    "github-actions[bot]",
+    "renovate[bot]"
+  ],
+  "freeze_thresholds": {
+    "frozen": 0.8,
+    "stable": 0.5
+  }
+}
