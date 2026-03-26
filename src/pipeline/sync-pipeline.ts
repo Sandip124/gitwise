@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { EventStore } from "../db/event-store.js";
 import { FreezeStore } from "../db/freeze-store.js";
 import { calculateFreezeScore } from "../core/freeze-calculator.js";
-import { readJsonl, deduplicateJsonl } from "../shared/jsonl.js";
+import { readJsonl } from "../shared/jsonl.js";
 import {
   getWisegitPaths,
   SharedEnrichment,
@@ -12,7 +12,6 @@ import {
 } from "../shared/team-types.js";
 import { logger } from "../shared/logger.js";
 
-// Track content hash of .wisegit/ files to detect changes across branches
 let lastSyncHash = "";
 let lastSyncRepoPath = "";
 
@@ -25,14 +24,19 @@ export interface SyncResult {
 }
 
 /**
- * Compute a lightweight hash of .wisegit/ file mtimes + sizes.
- * Changes when files are modified, including by git checkout.
+ * Compute a lightweight fingerprint of .wisegit/ files.
+ * Any git operation that touches these files changes the fingerprint.
  */
 function computeSyncHash(repoPath: string): string {
   const paths = getWisegitPaths(repoPath);
   const parts: string[] = [];
 
-  for (const file of [paths.enrichments, paths.overrides, paths.branchContexts, paths.config]) {
+  for (const file of [
+    paths.enrichments,
+    paths.overrides,
+    paths.branchContexts,
+    paths.config,
+  ]) {
     if (!existsSync(file)) {
       parts.push("0:0");
       continue;
@@ -54,17 +58,67 @@ function needsSync(repoPath: string): boolean {
 }
 
 /**
+ * Deduplicate JSONL entries. When two developers write conflicting entries
+ * (e.g., both override the same function), resolution rules apply:
+ *
+ * Enrichments: keyed by issue_ref — first entry wins (factual, immutable)
+ * Overrides: keyed by function_id — latest created_at wins (most recent decision)
+ */
+
+function deduplicateEnrichments(
+  entries: SharedEnrichment[]
+): SharedEnrichment[] {
+  const seen = new Map<string, SharedEnrichment>();
+  for (const e of entries) {
+    const key = `${e.issue_ref}:${e.platform}`;
+    if (!seen.has(key)) {
+      seen.set(key, e);
+    }
+    // First entry wins for enrichments (factual data doesn't change)
+  }
+  return [...seen.values()];
+}
+
+function deduplicateOverrides(entries: SharedOverride[]): SharedOverride[] {
+  // Group by function_id. For each function, keep only the latest
+  // non-revoked, non-expired entry.
+  const byFunction = new Map<string, SharedOverride>();
+
+  for (const o of entries) {
+    // Skip revoked
+    if (o.revoked) {
+      // A revocation cancels the previous override for this function
+      byFunction.delete(o.function_id);
+      continue;
+    }
+
+    // Skip expired
+    if (o.expires_at && new Date(o.expires_at) < new Date()) continue;
+
+    const existing = byFunction.get(o.function_id);
+    if (!existing) {
+      byFunction.set(o.function_id, o);
+    } else {
+      // Latest created_at wins — most recent team decision takes precedence
+      if (o.created_at > existing.created_at) {
+        byFunction.set(o.function_id, o);
+      }
+    }
+  }
+
+  return [...byFunction.values()];
+}
+
+/**
  * Sync .wisegit/ shared files into the local SQLite cache.
  *
- * RECONCILE approach: .wisegit/ JSONL is the source of truth.
- * SQLite overrides/enrichments are rebuilt to match — not just appended.
- * This handles branch switching correctly: if you checkout a branch
- * that doesn't have an override, it disappears from local cache.
+ * RECONCILE strategy:
+ * - .wisegit/ JSONL = source of truth for this branch
+ * - Enrichments: additive (factual data, keyed by issue_ref)
+ * - Overrides: reconciled (keyed by function_id, latest wins, per-branch)
  *
- * Triggers:
- * 1. Every MCP tool call (if file hash changed — < 1ms check)
- * 2. Post-merge hook (after git pull)
- * 3. wisegit sync (manual, force)
+ * Handles duplicates from git merges where two developers wrote
+ * conflicting entries to the same JSONL file.
  */
 export function syncSharedLayer(
   db: Database.Database,
@@ -87,13 +141,10 @@ export function syncSharedLayer(
   let overridesRemoved = 0;
   let changed = false;
 
-  // ── 1. Reconcile enrichments ──
-  // Additive: enrichments are factual (issue data) — safe to accumulate.
-  // If enrichments.jsonl has entries the DB doesn't, add them.
+  // ── 1. Reconcile enrichments (additive, deduplicated by issue_ref) ──
   if (existsSync(paths.enrichments)) {
-    const enrichments = deduplicateJsonl(
-      readJsonl<SharedEnrichment>(paths.enrichments),
-      (e) => `${e.issue_ref}:${e.platform}:${e.repo}`
+    const enrichments = deduplicateEnrichments(
+      readJsonl<SharedEnrichment>(paths.enrichments)
     );
 
     const existing = new Set(
@@ -135,75 +186,66 @@ export function syncSharedLayer(
     if (enrichmentsImported > 0) changed = true;
   }
 
-  // ── 2. Reconcile overrides ──
-  // REPLACE: overrides are branch-specific decisions.
-  // The JSONL on the current branch is the source of truth.
-  // Clear all JSONL-sourced overrides and re-import from current file.
-  const clearAndImport = db.transaction(() => {
-    // Remove overrides that were imported from JSONL (not locally created)
-    // We identify JSONL-sourced overrides by checking against the JSONL IDs
-    if (existsSync(paths.overrides)) {
-      const overrides = readJsonl<SharedOverride>(paths.overrides);
+  // ── 2. Reconcile overrides (per-function, latest wins) ──
+  const reconcileOverrides = db.transaction(() => {
+    if (!existsSync(paths.overrides)) return;
 
-      // Build set of valid override IDs from current branch's JSONL
-      const validIds = new Set<string>();
-      const activeOverrides: SharedOverride[] = [];
+    // Deduplicate: per function_id, latest created_at wins, revocations cancel
+    const validOverrides = deduplicateOverrides(
+      readJsonl<SharedOverride>(paths.overrides)
+    );
 
-      for (const o of overrides) {
-        if (o.revoked) continue;
-        if (o.expires_at && new Date(o.expires_at) < new Date()) continue;
-        validIds.add(o.id);
-        activeOverrides.push(o);
-      }
+    const validByFunction = new Map(
+      validOverrides.map((o) => [o.function_id, o])
+    );
+    const validIds = new Set(validOverrides.map((o) => o.id));
 
-      // Get current DB overrides
-      const dbOverrides = db
-        .prepare(
-          `SELECT id, function_id FROM overrides WHERE repo_path = ? AND active = 1`
-        )
-        .all(repoPath) as { id: string; function_id: string }[];
+    // Get current DB overrides
+    const dbOverrides = db
+      .prepare(
+        `SELECT id, function_id FROM overrides WHERE repo_path = ? AND active = 1`
+      )
+      .all(repoPath) as { id: string; function_id: string }[];
 
-      // Deactivate overrides not in current JSONL
-      for (const dbOvr of dbOverrides) {
-        if (!validIds.has(dbOvr.id)) {
-          // Check if this was a JSONL-sourced override (not a local-only one)
-          // Local-only overrides won't have IDs matching JSONL entries
-          // For safety, only remove if we have a JSONL file
-          const wasFromJsonl = overrides.some((o) => o.id === dbOvr.id);
-          if (wasFromJsonl) {
-            db.prepare(`UPDATE overrides SET active = 0 WHERE id = ?`).run(
-              dbOvr.id
-            );
-            overridesRemoved++;
-          }
+    // Deactivate DB overrides that conflict with JSONL source of truth
+    for (const dbOvr of dbOverrides) {
+      const jsonlOverride = validByFunction.get(dbOvr.function_id);
+
+      if (!jsonlOverride) {
+        // This function has no override in JSONL — check if it was JSONL-sourced
+        // Only deactivate if this ID was originally from JSONL
+        const allJsonlEntries = readJsonl<SharedOverride>(paths.overrides);
+        const wasFromJsonl = allJsonlEntries.some((o) => o.id === dbOvr.id);
+        if (wasFromJsonl) {
+          db.prepare(`UPDATE overrides SET active = 0 WHERE id = ?`).run(
+            dbOvr.id
+          );
+          overridesRemoved++;
         }
-      }
-
-      // Add overrides from JSONL that aren't in DB
-      const dbIdSet = new Set(dbOverrides.map((o) => o.id));
-      for (const o of activeOverrides) {
-        if (dbIdSet.has(o.id)) continue;
-
-        db.prepare(
-          `INSERT OR IGNORE INTO overrides (id, repo_path, function_id, reason, author, expires_at, active)
-           VALUES (?, ?, ?, ?, ?, ?, 1)`
-        ).run(
-          o.id,
-          repoPath,
-          o.function_id,
-          o.reason,
-          o.created_by,
-          o.expires_at
+      } else if (jsonlOverride.id !== dbOvr.id) {
+        // Different override won for this function — deactivate the old one
+        db.prepare(`UPDATE overrides SET active = 0 WHERE id = ?`).run(
+          dbOvr.id
         );
-        overridesImported++;
+        overridesRemoved++;
       }
-    } else {
-      // No overrides.jsonl on this branch — deactivate all JSONL-sourced overrides
-      // (Keep locally-created ones that haven't been shared yet)
+    }
+
+    // Import valid overrides that aren't in DB
+    const dbIdSet = new Set(dbOverrides.map((o) => o.id));
+    for (const o of validOverrides) {
+      if (dbIdSet.has(o.id)) continue;
+
+      db.prepare(
+        `INSERT OR IGNORE INTO overrides
+          (id, repo_path, function_id, reason, author, expires_at, active)
+         VALUES (?, ?, ?, ?, ?, ?, 1)`
+      ).run(o.id, repoPath, o.function_id, o.reason, o.created_by, o.expires_at);
+      overridesImported++;
     }
   });
 
-  clearAndImport();
+  reconcileOverrides();
   if (overridesImported > 0 || overridesRemoved > 0) changed = true;
 
   // ── 3. Recompute scores if anything changed ──
@@ -225,7 +267,6 @@ export function syncSharedLayer(
     );
   }
 
-  // Update sync state
   lastSyncHash = computeSyncHash(repoPath);
   lastSyncRepoPath = repoPath;
 
