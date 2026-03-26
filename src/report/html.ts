@@ -1,310 +1,685 @@
 import { ReportData } from "./collect.js";
 
-/**
- * Generate a self-contained HTML report with rich visualizations.
- * Inline CSS + SVG + minimal vanilla JS for interactivity.
- * No external dependencies.
- */
 export function generateHtmlReport(data: ReportData): string {
   const repoName = data.repoPath.split("/").pop() ?? data.repoPath;
+  const dataJson = JSON.stringify({
+    commits: data.commits,
+    allFunctions: data.allFunctions,
+    folderTree: data.folderTree,
+    dependencyEdges: data.dependencyEdges,
+    topPageRank: data.topPageRank,
+    fileEvents: data.fileEvents,
+    contributorFiles: data.contributorFiles,
+  });
 
   return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>wisegit report — ${esc(repoName)}</title>
-<style>
-${CSS}
-</style>
-</head>
-<body>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>wisegit — ${esc(repoName)}</title>
+<style>${CSS}</style>
+</head><body>
 
 <nav class="nav">
-  <span class="nav-brand">wisegit report</span>
-  <div class="nav-links">
-    <a href="#overview">Overview</a>
-    <a href="#freeze">Freeze Scores</a>
-    <a href="#theory">Theory Health</a>
-    <a href="#graph">Dependencies</a>
-    <a href="#timeline">Timeline</a>
-    <a href="#files">Files</a>
-    <a href="#contributors">Contributors</a>
+  <span class="brand">wisegit</span>
+  <div class="tabs" id="main-tabs">
+    <button class="tab active" data-tab="overview">Overview</button>
+    <button class="tab" data-tab="freeze">Freeze Scores</button>
+    <button class="tab" data-tab="theory">Theory Health</button>
+    <button class="tab" data-tab="commits">Commits</button>
+    <button class="tab" data-tab="files">Files</button>
+    <button class="tab" data-tab="contributors">Contributors</button>
+    <button class="tab" data-tab="search">Search</button>
   </div>
 </nav>
 
 <header>
-  <h1>${esc(repoName)}</h1>
-  <p class="subtitle">Decision health report — ${data.generatedAt.slice(0, 10)}</p>
+  <h1>${esc(repoName)} <span class="branch-badge">${esc(data.branch)}</span></h1>
+  <p class="sub">${data.generatedAt.slice(0, 10)} &mdash; ${fmt(data.totalCommits)} commits, ${fmt(data.totalEvents)} events, ${fmt(data.totalFunctions)} functions</p>
+  <p class="sub dim" style="font-size:.7rem">This report reflects the state of the <b>${esc(data.branch)}</b> branch. Results may differ on other branches.</p>
+  <details class="guide">
+    <summary>What do these metrics mean?</summary>
+    <div class="guide-grid">
+      <div class="gc"><b class="green">Open</b> (score &lt; 0.50) — safe to modify, little decision history.</div>
+      <div class="gc"><b class="yellow">Stable</b> (0.50–0.79) — has intentional decisions. Review before changing.</div>
+      <div class="gc"><b class="red">Frozen</b> (&ge; 0.80) — verified decisions backed by git history and issue trackers. Override required.</div>
+      <div class="gc"><b class="blue">Freeze score</b> measures <em>intentionality and risk</em>, not code quality. High score = "understand before changing."</div>
+      <div class="gc"><b class="purple">Theory health</b> tracks who understands each function. When original authors leave, knowledge is lost — wisegit detects this from contributor patterns.</div>
+      <div class="gc"><b class="dim">Decisions</b> are extracted from commits — the message, classification, and inferred intent behind each change.</div>
+    </div>
+  </details>
 </header>
 
-<!-- Overview -->
-<section id="overview">
-  <h2>Overview</h2>
-  <div class="grid grid-4">
-    <div class="card"><div class="card-label">Commits</div><div class="card-value">${fmt(data.totalCommits)}</div></div>
-    <div class="card"><div class="card-label">Decision Events</div><div class="card-value">${fmt(data.totalEvents)}</div></div>
-    <div class="card"><div class="card-label">Functions</div><div class="card-value">${fmt(data.totalFunctions)}</div></div>
-    <div class="card"><div class="card-label">Files</div><div class="card-value">${fmt(data.totalFiles)}</div></div>
+<!-- ═══ OVERVIEW TAB ═══ -->
+<div class="panel active" id="panel-overview">
+  <div class="g4">
+    <div class="card"><div class="cl">Commits</div><div class="cv">${fmt(data.totalCommits)}</div></div>
+    <div class="card"><div class="cl">Events</div><div class="cv">${fmt(data.totalEvents)}</div><div class="cd">Function-level changes tracked</div></div>
+    <div class="card"><div class="cl">Functions</div><div class="cv">${fmt(data.totalFunctions)}</div></div>
+    <div class="card"><div class="cl">Files</div><div class="cv">${fmt(data.totalFiles)}</div></div>
   </div>
-  ${data.languages.length > 0 ? `<div class="card"><div class="card-label">Languages</div><div class="pill-row">${data.languages.map(l => `<span class="pill">${esc(l.language)} <b>${l.count}</b></span>`).join("")}</div></div>` : ""}
-  ${data.classificationBreakdown.length > 0 ? `<div class="card" style="margin-top:1rem"><div class="card-label">Commit Classification</div><div class="pill-row">${data.classificationBreakdown.map(c => `<span class="pill pill-${c.classification.toLowerCase()}">${c.classification} <b>${fmt(c.count)}</b></span>`).join("")}</div></div>` : ""}
-</section>
 
-<!-- Freeze Scores -->
-<section id="freeze">
-  <h2>Freeze Score Distribution</h2>
-  <div class="grid grid-3">
-    <div class="card card-accent-red"><div class="card-label">Frozen (&ge; 0.80)</div><div class="card-value red">${data.freezeDistribution.frozen}</div></div>
-    <div class="card card-accent-yellow"><div class="card-label">Stable (0.50–0.79)</div><div class="card-value yellow">${data.freezeDistribution.stable}</div></div>
-    <div class="card card-accent-green"><div class="card-label">Open (&lt; 0.50)</div><div class="card-value green">${data.freezeDistribution.open}</div></div>
+  ${data.languages.length > 0 ? `<div class="card mt"><div class="cl">Languages</div><div class="pills">${data.languages.map(l => `<span class="pill">${esc(l.language)} <b>${l.count}</b></span>`).join("")}</div></div>` : ""}
+
+  <div class="g2 mt">
+    ${data.classificationBreakdown.length > 0 ? `
+    <div class="card">
+      <div class="cl">Commit Classification</div>
+      <div class="cd">How well commits communicate intent</div>
+      <div class="cls-chart">${renderClassificationBars(data.classificationBreakdown)}</div>
+      <div class="cls-legend">${data.classificationBreakdown.map(c => {
+        const total = data.classificationBreakdown.reduce((s, x) => s + x.count, 0);
+        return `<span class="cls-leg-item cls-${c.classification.toLowerCase()}">${c.classification}: ${c.count} (${(c.count / total * 100).toFixed(0)}%)</span>`;
+      }).join("")}</div>
+    </div>` : ""}
+
+    <div class="card">
+      <div class="cl">Protection Status</div>
+      <div class="cd">How many functions are protected</div>
+      <div class="dist-bars">
+        <div class="dist-row"><span class="dist-label red">Frozen</span><div class="dist-track"><div class="dist-fill bg-red" style="width:${pctN(data.freezeDistribution.frozen, data.totalFunctions)}%"></div></div><span class="dist-val">${data.freezeDistribution.frozen}</span></div>
+        <div class="dist-row"><span class="dist-label yellow">Stable</span><div class="dist-track"><div class="dist-fill bg-yellow" style="width:${pctN(data.freezeDistribution.stable, data.totalFunctions)}%"></div></div><span class="dist-val">${data.freezeDistribution.stable}</span></div>
+        <div class="dist-row"><span class="dist-label green">Open</span><div class="dist-track"><div class="dist-fill bg-green" style="width:${pctN(data.freezeDistribution.open, data.totalFunctions)}%"></div></div><span class="dist-val">${data.freezeDistribution.open}</span></div>
+      </div>
+    </div>
   </div>
-  ${renderHistogram(data.scoreHistogram)}
-  ${data.topFrozen.length > 0 ? `<div class="card" style="margin-top:1rem"><div class="card-label">Top Functions by Freeze Score</div><div class="bar-chart">${data.topFrozen.slice(0, 12).map(f => `<div class="bar-row" title="${esc(f.file)}::${esc(f.name)}"><div class="bar-label">${esc(f.name)}()</div><div class="bar-track"><div class="bar-fill ${scoreColor(f.score)}" style="width:${Math.max(2, f.score * 100).toFixed(0)}%"></div></div><div class="bar-value">${f.score.toFixed(2)}</div></div>`).join("")}</div></div>` : ""}
-</section>
 
-<!-- Theory Health -->
-<section id="theory">
-  <h2>Theory Health</h2>
-  <div class="grid grid-2">
+  <div class="card mt">
+    <div class="cl">Activity Timeline</div>
+    <div class="cd">Decision events per month — gaps indicate unmaintained periods</div>
+    ${renderTimeline(data.timeline)}
+  </div>
+
+  ${data.originBreakdown.length > 0 ? `
+  <div class="card mt">
+    <div class="cl">Decision Origins</div>
+    <div class="cd">How decisions were made: by humans, by AI with review, or by AI alone</div>
+    <div class="stat-list">${data.originBreakdown.map(o => `<div class="sr"><span>${o.origin.replace(/_/g, " ")}</span><span class="sc ${o.origin === 'HUMAN' ? 'green' : o.origin === 'AI_REVIEWED' ? 'yellow' : 'red'}">${fmt(o.count)}</span></div>`).join("")}</div>
+  </div>` : ""}
+</div>
+
+<!-- ═══ FREEZE SCORES TAB ═══ -->
+<div class="panel" id="panel-freeze">
+  <div class="g3">
+    <div class="card ac-red"><div class="cl">Frozen (&ge; 0.80)</div><div class="cv red">${data.freezeDistribution.frozen}</div><div class="cd">Override required to modify</div></div>
+    <div class="card ac-yellow"><div class="cl">Stable (0.50–0.79)</div><div class="cv yellow">${data.freezeDistribution.stable}</div><div class="cd">Review intent before changing</div></div>
+    <div class="card ac-green"><div class="cl">Open (&lt; 0.50)</div><div class="cv green">${data.freezeDistribution.open}</div><div class="cd">Safe to modify freely</div></div>
+  </div>
+
+  <div class="card" style="margin-top:1.5rem">
+    <div class="cl">Score Distribution</div>
+    <div class="cd" style="margin-bottom:0">How functions are distributed across score ranges</div>
+    <div class="histogram">
+      ${data.scoreHistogram.map((b, i) => {
+        const max = Math.max(...data.scoreHistogram.map(x => x.count), 1);
+        const h = Math.max(2, (b.count / max) * 140);
+        const color = i >= 8 ? "#f85149" : i >= 5 ? "#d29922" : "#3fb950";
+        return `<div class="hc"><div class="hcount">${b.count > 0 ? b.count : ""}</div><div class="hbar" style="height:${h}px;background:${color}" title="${b.bucket}: ${b.count}"></div><div class="hlabel">${(i / 10).toFixed(1)}</div></div>`;
+      }).join("")}
+    </div>
+    <div class="hscale"><span class="green">Open</span><span class="yellow">Stable</span><span class="red">Frozen</span></div>
+  </div>
+
+  ${data.topFrozen.length > 0 ? `
+  <div class="card mt">
+    <div class="cl">Top Functions by Score</div>
+    <div class="cd">Functions carrying the most verified decisions — the load-bearing parts of your codebase</div>
+    <div class="bars">
+      ${data.topFrozen.slice(0, 15).map(f => `
+      <div class="br" title="${esc(f.file)}::${esc(f.name)}()">
+        <div class="bl">${esc(f.name)}()</div>
+        <div class="bt"><div class="bf ${scColor(f.score)}" style="width:${Math.max(2, f.score * 100).toFixed(0)}%"></div></div>
+        <div class="bv">${f.score.toFixed(2)}</div>
+      </div>`).join("")}
+    </div>
+  </div>` : ""}
+</div>
+
+<!-- ═══ THEORY HEALTH TAB ═══ -->
+<div class="panel" id="panel-theory">
+  <div class="g2">
     <div class="card" style="text-align:center">
       ${renderDonut(data.theoryHealth.healthy, data.theoryHealth.fragile, data.theoryHealth.critical, data.totalFunctions)}
       <div class="legend">
-        <div class="legend-item"><div class="legend-dot bg-green"></div> Healthy (2+)</div>
-        <div class="legend-item"><div class="legend-dot bg-yellow"></div> Fragile (1)</div>
-        <div class="legend-item"><div class="legend-dot bg-red"></div> Critical (0)</div>
+        <span><span class="dot bg-green"></span> Healthy (2+ active)</span>
+        <span><span class="dot bg-yellow"></span> Fragile (1 active)</span>
+        <span><span class="dot bg-red"></span> No active contributors</span>
       </div>
     </div>
     <div class="card">
-      <div class="card-label">Theory Distribution</div>
+      <div class="cl">Distribution</div>
       <div class="stat-list">
-        <div class="stat-row"><span>Healthy (2+ active holders)</span><span class="score low">${data.theoryHealth.healthy} (${pct(data.theoryHealth.healthy, data.totalFunctions)})</span></div>
-        <div class="stat-row"><span>Fragile (1 active holder)</span><span class="score mid">${data.theoryHealth.fragile} (${pct(data.theoryHealth.fragile, data.totalFunctions)})</span></div>
-        <div class="stat-row"><span>Critical (0 active holders)</span><span class="score high">${data.theoryHealth.critical} (${pct(data.theoryHealth.critical, data.totalFunctions)})</span></div>
+        <div class="sr"><span><b>Healthy</b> — 2+ people actively work on these</span><span class="sc green">${data.theoryHealth.healthy} (${pct(data.theoryHealth.healthy, data.totalFunctions)})</span></div>
+        <div class="sr"><span><b>Fragile</b> — only 1 person knows this code</span><span class="sc yellow">${data.theoryHealth.fragile} (${pct(data.theoryHealth.fragile, data.totalFunctions)})</span></div>
+        <div class="sr"><span><b>No active contributors</b> — original authors inactive 6+ months. Knowledge may be partially or fully lost.</span><span class="sc red">${data.theoryHealth.critical} (${pct(data.theoryHealth.critical, data.totalFunctions)})</span></div>
       </div>
-      ${data.originBreakdown.length > 0 ? `<div class="card-label" style="margin-top:1.5rem">Decision Origin</div><div class="stat-list">${data.originBreakdown.map(o => `<div class="stat-row"><span>${o.origin}</span><span class="score ${o.origin === 'HUMAN' ? 'low' : o.origin === 'AI_REVIEWED' ? 'mid' : 'high'}">${fmt(o.count)}</span></div>`).join("")}</div>` : ""}
     </div>
   </div>
-  ${data.topRisks.length > 0 ? `<div class="card" style="margin-top:1rem"><div class="card-label">Top Risk — Full Naur Death</div><table><tr><th>Function</th><th>File</th><th>Status</th></tr>${data.topRisks.map(r => `<tr><td>${esc(r.name)}()</td><td class="muted">${esc(shortFile(r.file))}</td><td><span class="badge critical">${r.holders} contributors, 0 active</span></td></tr>`).join("")}</table></div>` : ""}
-</section>
 
-<!-- Dependency Graph -->
-<section id="graph">
-  <h2>Dependency Graph</h2>
-  ${data.dependencyEdges.length > 0 ? `<div class="card"><div class="card-label">Co-change relationships (functions modified in the same commits)</div><div id="graph-container" style="height:500px;position:relative;overflow:hidden"><svg id="force-graph" width="100%" height="100%" viewBox="0 0 800 500"></svg></div></div>` : '<div class="card"><div class="card-label muted">No dependency edges found. Run <code>wisegit recompute</code> to build the call graph.</div></div>'}
-  ${data.topPageRank.length > 0 ? `<div class="card" style="margin-top:1rem"><div class="card-label">Structural Importance (PageRank)</div><div class="bar-chart">${data.topPageRank.map(f => `<div class="bar-row" title="${esc(f.file)}"><div class="bar-label">${esc(f.name)}()</div><div class="bar-track"><div class="bar-fill fill-purple" style="width:${(f.score * 100).toFixed(0)}%"></div></div><div class="bar-value">${f.score.toFixed(3)}</div></div>`).join("")}</div></div>` : ""}
-</section>
+  ${data.topRisks.length > 0 ? `
+  <div class="card mt">
+    <div class="cl">Highest Risk — No Active Contributors</div>
+    <div class="cd">These functions were written by people who haven't committed in 6+ months. The knowledge of <em>why</em> they work this way may be lost. Treat all logic as intentional until manually reviewed.</div>
+    <table><tr><th>Function</th><th>File</th><th>Contributors</th></tr>
+    ${data.topRisks.map(r => `<tr><td>${esc(r.name)}()</td><td class="dim">${esc(shortFile(r.file))}</td><td><span class="badge critical">${r.holders} total, 0 active</span></td></tr>`).join("")}
+    </table>
+  </div>` : ""}
 
-<!-- Timeline -->
-<section id="timeline">
-  <h2>Activity Timeline</h2>
-  <div class="card"><div class="card-label">Decision events per month</div>${renderTimeline(data.timeline)}</div>
-</section>
+  <div class="card mt">
+    <div class="cl">Browse Functions</div>
+    <div class="sub-tabs">
+      <button class="stab active" onclick="showSubTab('fn-all',this)">All (${data.allFunctions.length})</button>
+      <button class="stab" onclick="showSubTab('fn-stable',this)">Stable</button>
+      <button class="stab" onclick="showSubTab('fn-critical',this)">No Active Contributors</button>
+    </div>
+    <div id="fn-all" class="stab-content active">
+      <div class="scroll-table"><table><tr><th>Function</th><th>File</th><th>Score</th></tr>
+      ${data.allFunctions.slice(0, 50).map(f => `<tr><td>${esc(f.name)}()</td><td class="dim">${esc(shortFile(f.file))}</td><td><span class="sc ${f.score >= 0.8 ? 'red' : f.score >= 0.5 ? 'yellow' : 'green'}">${f.score.toFixed(2)}</span></td></tr>`).join("")}
+      </table></div>
+      ${data.allFunctions.length > 50 ? `<div class="more">${data.allFunctions.length - 50} more not shown</div>` : ""}
+    </div>
+    <div id="fn-stable" class="stab-content">
+      <div class="scroll-table"><table><tr><th>Function</th><th>File</th><th>Score</th></tr>
+      ${data.allFunctions.filter(f => f.score >= 0.5 && f.score < 0.8).slice(0, 50).map(f => `<tr><td>${esc(f.name)}()</td><td class="dim">${esc(shortFile(f.file))}</td><td><span class="sc yellow">${f.score.toFixed(2)}</span></td></tr>`).join("")}
+      </table></div>
+    </div>
+    <div id="fn-critical" class="stab-content">
+      <div class="scroll-table"><table><tr><th>Function</th><th>File</th><th>Score</th></tr>
+      ${data.allFunctions.filter(f => f.theoryRisk === "critical").slice(0, 50).map(f => `<tr><td>${esc(f.name)}()</td><td class="dim">${esc(shortFile(f.file))}</td><td><span class="sc red">${f.score.toFixed(2)}</span></td></tr>`).join("")}
+      </table></div>
+    </div>
+  </div>
+</div>
 
-<!-- Files -->
-<section id="files">
-  <h2>File Overview</h2>
-  ${data.fileScores.length > 0 ? `<div class="card"><div class="card-label">Files by decision density (size = events, color = avg freeze score)</div>${renderTreemap(data.fileScores)}</div>` : ""}
-  <div class="card" style="margin-top:1rem"><div class="card-label">Top Files by Decision History</div><div class="bar-chart">${data.topFiles.slice(0, 12).map(f => { const max = data.topFiles[0]?.events ?? 1; return `<div class="bar-row" title="${esc(f.file)}"><div class="bar-label">${esc(shortFile(f.file))}</div><div class="bar-track"><div class="bar-fill fill-blue" style="width:${((f.events / max) * 100).toFixed(0)}%"></div></div><div class="bar-value">${f.events}</div></div>`; }).join("")}</div></div>
-</section>
+<!-- ═══ COMMITS TAB ═══ -->
+<div class="panel" id="panel-commits">
+  <div class="card">
+    <div class="commit-controls">
+      <input type="text" id="commit-search" placeholder="Search commits..." class="sinput" oninput="filterCommits()">
+      <div class="pills">
+        <button class="pbtn active" onclick="filterCls('all',this)">All</button>
+        <button class="pbtn cls-str" onclick="filterCls('STRUCTURED',this)">Structured</button>
+        <button class="pbtn cls-desc" onclick="filterCls('DESCRIPTIVE',this)">Descriptive</button>
+        <button class="pbtn cls-noise" onclick="filterCls('NOISE',this)">Noise</button>
+      </div>
+    </div>
+    <div id="commit-list"></div>
+    <div class="paging">
+      <button id="prev-btn" onclick="commitPage(-1)" disabled>&larr; Prev</button>
+      <span id="page-info"></span>
+      <button id="next-btn" onclick="commitPage(1)">Next &rarr;</button>
+    </div>
+  </div>
+</div>
 
-<!-- Contributors -->
-<section id="contributors">
-  <h2>Contributors</h2>
-  <div class="card"><table><tr><th>Author</th><th>Commits</th><th>Last Active</th><th>Status</th></tr>${data.contributors.slice(0, 15).map(c => `<tr><td>${esc(c.author)}</td><td>${c.commits}</td><td class="muted">${c.lastActive?.slice(0, 10) ?? "unknown"}</td><td><span class="badge ${c.isActive ? 'active' : 'inactive'}">${c.isActive ? "active" : "inactive"}</span></td></tr>`).join("")}</table></div>
-  ${data.contributorFiles.length > 0 ? `<div class="card" style="margin-top:1rem"><div class="card-label">Who Knows What (contributor-file pairs)</div><table><tr><th>Contributor</th><th>File</th><th>Commits</th></tr>${data.contributorFiles.slice(0, 15).map(cf => `<tr><td>${esc(cf.author)}</td><td class="muted">${esc(shortFile(cf.file))}</td><td>${cf.commits}</td></tr>`).join("")}</table></div>` : ""}
-</section>
+<!-- ═══ FILES TAB ═══ -->
+<div class="panel" id="panel-files">
+  <div class="card">
+    <div class="cl">Folder Structure</div>
+    <div class="cd">Click folders to expand. Score shows average freeze score for functions in each folder.</div>
+    <div id="folder-tree"></div>
+  </div>
 
-<footer>Generated by <strong>wisegit</strong> — decision protection for code that matters.<br>Grounded in 12 published papers. <a href="https://github.com/Sandip124/wisegit">github.com/Sandip124/wisegit</a></footer>
+  <div class="card mt">
+    <div class="cl">Top Files by Decision History</div>
+    <div class="cd">Files with the most recorded decision events. Click to expand and browse all decisions with pagination.</div>
+    ${data.topFiles.slice(0, 12).map((f, idx) => {
+      const max = data.topFiles[0]?.events ?? 1;
+      return `
+      <div class="file-row-wrap">
+        <div class="br clickable" onclick="toggleFileEvents(${idx})" style="margin-bottom:.3rem">
+          <div class="bl">${esc(shortFile(f.file))}</div>
+          <div class="bt"><div class="bf fill-blue" style="width:${((f.events / max) * 100).toFixed(0)}%"></div></div>
+          <div class="bv">${f.events} events &#9660;</div>
+        </div>
+        <div class="file-events" id="fe-${idx}" style="display:none">
+          <div id="fe-list-${idx}"></div>
+          <div class="paging fe-paging" id="fe-paging-${idx}"></div>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>
+
+  ${data.topPageRank.length > 0 ? `
+  <div class="card mt">
+    <div class="cl">Most Load-Bearing Functions (PageRank)</div>
+    <div class="cd">Functions ranked by how many other functions depend on them. Higher = wider impact if changed.</div>
+    <div class="bars">${data.topPageRank.map(f => `
+      <div class="br" title="${esc(f.file)}">
+        <div class="bl">${esc(f.name)}()</div>
+        <div class="bt"><div class="bf fill-purple" style="width:${(f.score * 100).toFixed(0)}%"></div></div>
+        <div class="bv">${f.score.toFixed(3)}</div>
+      </div>`).join("")}
+    </div>
+  </div>` : ""}
+</div>
+
+<!-- ═══ CONTRIBUTORS TAB ═══ -->
+<div class="panel" id="panel-contributors">
+  <div class="card">
+    <div class="cl">Team Members</div>
+    <table><tr><th>Author</th><th>Commits</th><th>Last Active</th><th>Status</th></tr>
+    ${data.contributors.slice(0, 20).map(c => `<tr><td>${esc(c.author)}</td><td>${c.commits}</td><td class="dim">${c.lastActive?.slice(0, 10) ?? ""}</td><td><span class="badge ${c.isActive ? 'active' : 'inactive'}">${c.isActive ? "active" : "inactive"}</span></td></tr>`).join("")}
+    </table>
+  </div>
+  ${data.contributorFiles.length > 0 ? `
+  <div class="card mt">
+    <div class="cl">Who Knows What</div>
+    <div class="cd">Which contributors have the most commit history with which files. Useful for finding who to ask about specific code.</div>
+    <table><tr><th>Contributor</th><th>File</th><th>Commits</th></tr>
+    ${data.contributorFiles.slice(0, 20).map(cf => `<tr><td>${esc(cf.author)}</td><td class="dim">${esc(shortFile(cf.file))}</td><td>${cf.commits}</td></tr>`).join("")}
+    </table>
+  </div>` : ""}
+</div>
+
+<!-- ═══ SEARCH TAB ═══ -->
+<div class="panel" id="panel-search">
+  <div class="card">
+    <input type="text" id="decision-search" placeholder="Search functions, commits, files, contributors..." class="sinput sinput-lg" oninput="doSearch()">
+    <div id="search-results"><div class="dim" style="padding:1.5rem;text-align:center">Search across ${fmt(data.totalFunctions)} functions, ${fmt(data.totalCommits)} commits, and ${data.contributors.length} contributors</div></div>
+  </div>
+</div>
+
+<footer>Generated by <b>wisegit</b> &mdash; decision protection for code that matters. <a href="https://github.com/Sandip124/wisegit">github.com/Sandip124/wisegit</a></footer>
 
 <script>
+var D=${dataJson};
+var COMMITS=${JSON.stringify(data.commits)};
+var FUNS=${JSON.stringify(data.allFunctions)};
+var CONTRIBUTORS=${JSON.stringify(data.contributors)};
 ${SCRIPT}
-// Init force graph if data exists
-(function(){
-  const nodes=${JSON.stringify(getGraphNodes(data))};
-  const edges=${JSON.stringify(getGraphEdges(data))};
-  if(nodes.length>0) initForceGraph(nodes,edges);
-})();
 </script>
 </body></html>`;
 }
 
-// ── Helpers ──
-
 function esc(s: string): string { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function fmt(n: number): string { return n.toLocaleString(); }
-function pct(n: number, total: number): string { return total === 0 ? "0%" : `${((n / total) * 100).toFixed(1)}%`; }
+function pct(n: number, t: number): string { return t === 0 ? "0%" : `${((n / t) * 100).toFixed(1)}%`; }
+function pctN(n: number, t: number): number { return t === 0 ? 0 : Math.max(1, (n / t) * 100); }
 function shortFile(f: string): string { const p = f.split("/"); return p.length > 2 ? `.../${p.slice(-2).join("/")}` : f; }
-function scoreColor(s: number): string { return s >= 0.8 ? "fill-red" : s >= 0.5 ? "fill-yellow" : "fill-green"; }
+function scColor(s: number): string { return s >= 0.8 ? "fill-red" : s >= 0.5 ? "fill-yellow" : "fill-green"; }
 
-function getGraphNodes(data: ReportData) {
-  const nodeSet = new Set<string>();
-  data.dependencyEdges.forEach(e => { nodeSet.add(e.source); nodeSet.add(e.target); });
-  const prMap = new Map(data.topPageRank.map(p => [p.name, p.score]));
-  return [...nodeSet].slice(0, 60).map(n => ({ id: n, r: 4 + (prMap.get(n) ?? 0) * 16, pr: prMap.get(n) ?? 0 }));
-}
-
-function getGraphEdges(data: ReportData) {
-  const nodeSet = new Set<string>();
-  data.dependencyEdges.forEach(e => { nodeSet.add(e.source); nodeSet.add(e.target); });
-  const nodes = [...nodeSet].slice(0, 60);
-  return data.dependencyEdges.filter(e => nodes.includes(e.source) && nodes.includes(e.target)).slice(0, 100);
-}
-
-function renderDonut(healthy: number, fragile: number, critical: number, total: number): string {
+function renderClassificationBars(data: { classification: string; count: number }[]): string {
+  const total = data.reduce((s, x) => s + x.count, 0);
   if (total === 0) return "";
-  const r = 70, cx = 80, cy = 80, circ = 2 * Math.PI * r;
-  const pH = healthy / total, pF = fragile / total, pC = critical / total;
-  return `<svg viewBox="0 0 160 160" width="180" height="180">
+  // Render each as a separate row to avoid label clipping
+  return data.map(c => {
+    const pctVal = (c.count / total * 100);
+    return `<div class="cls-row">
+      <span class="cls-label cls-${c.classification.toLowerCase()}">${c.classification}</span>
+      <div class="cls-track"><div class="cls-fill cls-bg-${c.classification.toLowerCase()}" style="width:${Math.max(3, pctVal)}%"></div></div>
+      <span class="cls-val">${c.count} (${pctVal.toFixed(0)}%)</span>
+    </div>`;
+  }).join("");
+}
+
+function renderDonut(h: number, f: number, c: number, t: number): string {
+  if (t === 0) return "";
+  const r = 70, cx = 80, cy = 80, ci = 2 * Math.PI * r;
+  const pH = h / t, pF = f / t, pC = c / t;
+  return `<svg viewBox="0 0 160 160" width="170" height="170">
     <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#21262d" stroke-width="20"/>
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#3fb950" stroke-width="20" stroke-dasharray="${pH * circ} ${circ}" stroke-dashoffset="0" transform="rotate(-90 ${cx} ${cy})"/>
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#d29922" stroke-width="20" stroke-dasharray="${pF * circ} ${circ}" stroke-dashoffset="-${pH * circ}" transform="rotate(-90 ${cx} ${cy})"/>
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#f85149" stroke-width="20" stroke-dasharray="${pC * circ} ${circ}" stroke-dashoffset="-${(pH + pF) * circ}" transform="rotate(-90 ${cx} ${cy})"/>
-    <text x="${cx}" y="${cy - 8}" text-anchor="middle" fill="#f0f6fc" font-size="24" font-weight="600">${total}</text>
-    <text x="${cx}" y="${cy + 12}" text-anchor="middle" fill="#8b949e" font-size="11">functions</text>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#3fb950" stroke-width="20" stroke-dasharray="${pH * ci} ${ci}" stroke-dashoffset="0" transform="rotate(-90 ${cx} ${cy})"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#d29922" stroke-width="20" stroke-dasharray="${pF * ci} ${ci}" stroke-dashoffset="-${pH * ci}" transform="rotate(-90 ${cx} ${cy})"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#f85149" stroke-width="20" stroke-dasharray="${pC * ci} ${ci}" stroke-dashoffset="-${(pH + pF) * ci}" transform="rotate(-90 ${cx} ${cy})"/>
+    <text x="${cx}" y="${cy - 6}" text-anchor="middle" fill="#f0f6fc" font-size="22" font-weight="600">${t}</text>
+    <text x="${cx}" y="${cy + 12}" text-anchor="middle" fill="#8b949e" font-size="10">functions</text>
   </svg>`;
 }
 
-function renderHistogram(buckets: { bucket: string; count: number }[]): string {
-  const max = Math.max(...buckets.map(b => b.count), 1);
-  return `<div class="card" style="margin-top:1rem"><div class="card-label">Score Distribution</div><div class="histogram">${buckets.map(b => {
-    const h = Math.max(2, (b.count / max) * 120);
-    const color = parseFloat(b.bucket) >= 0.8 ? "#f85149" : parseFloat(b.bucket) >= 0.5 ? "#d29922" : "#3fb950";
-    return `<div class="hist-col" title="${b.bucket}: ${b.count}"><div class="hist-bar" style="height:${h}px;background:${color}"></div><div class="hist-label">${b.bucket.split("\u2013")[0]}</div><div class="hist-count">${b.count}</div></div>`;
-  }).join("")}</div></div>`;
+function renderTimeline(tl: { month: string; events: number }[]): string {
+  if (!tl.length) return "<p class='dim'>No timeline data.</p>";
+  const max = Math.max(...tl.map(t => t.events));
+  return `<div class="tl">${tl.map(t => `<div class="tlc" title="${t.month}: ${t.events} events"><div class="tlb" style="height:${Math.max(3, (t.events / max) * 120)}px"></div></div>`).join("")}</div><div class="tll"><span>${tl[0].month}</span><span>${tl[tl.length - 1].month}</span></div>`;
 }
 
-function renderTimeline(timeline: { month: string; events: number }[]): string {
-  if (timeline.length === 0) return "<p class='muted'>No timeline data.</p>";
-  const max = Math.max(...timeline.map(t => t.events));
-  return `<div class="timeline">${timeline.map(t => `<div class="tl-col" title="${t.month}: ${t.events} events"><div class="tl-bar" style="height:${Math.max(3, (t.events / max) * 140)}px"></div></div>`).join("")}</div><div class="tl-labels"><span>${timeline[0].month}</span><span>${timeline[timeline.length - 1].month}</span></div>`;
-}
-
-function renderTreemap(files: { file: string; avgScore: number; functions: number; events: number; theoryRisk: string }[]): string {
-  const total = files.reduce((s, f) => s + f.events, 0) || 1;
-  return `<div class="treemap">${files.slice(0, 30).map(f => {
-    const pct = Math.max(3, (f.events / total) * 100);
-    const color = f.avgScore >= 0.8 ? "#f8514930" : f.avgScore >= 0.5 ? "#d2992230" : "#3fb95018";
-    const border = f.avgScore >= 0.8 ? "#f85149" : f.avgScore >= 0.5 ? "#d29922" : "#3fb950";
-    return `<div class="tm-cell" style="flex-basis:${pct}%;background:${color};border-color:${border}" title="${esc(f.file)}\\nScore: ${f.avgScore.toFixed(2)}\\nFunctions: ${f.functions}\\nEvents: ${f.events}"><div class="tm-name">${esc(f.file.split("/").pop() ?? f.file)}</div><div class="tm-score">${f.avgScore.toFixed(2)}</div></div>`;
-  }).join("")}</div>`;
-}
-
-// ── CSS ──
 const CSS = `
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,monospace;background:#0d1117;color:#c9d1d9;padding:0 2rem 3rem;max-width:1200px;margin:0 auto}
-.nav{position:sticky;top:0;background:#0d1117ee;backdrop-filter:blur(8px);padding:.8rem 0;margin-bottom:1rem;border-bottom:1px solid #21262d;z-index:10;display:flex;align-items:center;justify-content:space-between}
-.nav-brand{color:#58a6ff;font-weight:700;font-size:.95rem}
-.nav-links{display:flex;gap:1.2rem}
-.nav-links a{color:#8b949e;text-decoration:none;font-size:.8rem;transition:color .2s}
-.nav-links a:hover{color:#f0f6fc}
-header{margin:2rem 0}
-h1{color:#f0f6fc;font-size:2rem;margin-bottom:.3rem}
-h2{color:#8b949e;margin:2.5rem 0 1rem;font-size:1.1rem;text-transform:uppercase;letter-spacing:.05em}
-.subtitle{color:#484f58}
-section{scroll-margin-top:3.5rem}
-.grid{display:grid;gap:1rem;margin-bottom:1rem}
-.grid-2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
-.grid-3{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
-.grid-4{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
-.card{background:#161b22;border:1px solid #21262d;border-radius:10px;padding:1.3rem;transition:border-color .2s}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;max-width:1100px;margin:0 auto;padding:0 1.5rem 3rem;line-height:1.5}
+
+/* Nav */
+.nav{position:sticky;top:0;background:#0d1117ee;backdrop-filter:blur(8px);padding:.6rem 0;border-bottom:1px solid #21262d;z-index:10;display:flex;align-items:center;gap:1.5rem}
+.brand{color:#58a6ff;font-weight:700;font-size:.9rem;flex-shrink:0}
+.tabs{display:flex;gap:.3rem;flex-wrap:wrap}
+.tab{background:none;border:1px solid transparent;color:#8b949e;padding:.3rem .7rem;border-radius:6px;cursor:pointer;font-size:.75rem;transition:.2s}
+.tab:hover{color:#c9d1d9}.tab.active{border-color:#58a6ff;color:#58a6ff;background:#58a6ff11}
+
+/* Header */
+header{margin:1.5rem 0 1rem}
+h1{color:#f0f6fc;font-size:1.5rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.branch-badge{font-size:.7rem;font-weight:500;background:#1f6feb22;color:#58a6ff;padding:.2rem .6rem;border-radius:12px;border:1px solid #1f6feb44}
+.sub{color:#484f58;font-size:.82rem;margin-top:.2rem}
+.guide{margin-top:.8rem;border:1px solid #21262d;border-radius:8px;padding:.5rem .8rem}
+.guide summary{color:#8b949e;font-size:.8rem;cursor:pointer}
+.guide summary:hover{color:#c9d1d9}
+.guide-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.6rem;margin-top:.6rem}
+.gc{font-size:.78rem;color:#8b949e;line-height:1.4;padding:.4rem;background:#161b22;border-radius:6px}
+
+/* Panels (tab content) */
+.panel{display:none}.panel.active{display:block}
+
+/* Cards */
+.card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:1.1rem;transition:border-color .2s}
 .card:hover{border-color:#30363d}
-.card-accent-red{border-left:3px solid #f85149}
-.card-accent-yellow{border-left:3px solid #d29922}
-.card-accent-green{border-left:3px solid #3fb950}
-.card-label{color:#8b949e;font-size:.8rem;margin-bottom:.4rem}
-.card-value{font-size:2rem;font-weight:700;color:#f0f6fc}
-.card-value.green{color:#3fb950}.card-value.yellow{color:#d29922}.card-value.red{color:#f85149}
-.pill-row{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}
-.pill{background:#21262d;padding:.3rem .8rem;border-radius:16px;font-size:.8rem;color:#8b949e}
-.pill b{color:#c9d1d9;margin-left:.3rem}
-.pill-structured{border:1px solid #3fb950}.pill-descriptive{border:1px solid #58a6ff}.pill-noise{border:1px solid #484f58}
-.bar-chart{display:flex;flex-direction:column;gap:.5rem;margin-top:.8rem}
-.bar-row{display:flex;align-items:center;gap:.5rem}
-.bar-label{width:180px;font-size:.78rem;color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bar-track{flex:1;height:22px;background:#21262d;border-radius:4px;overflow:hidden}
-.bar-fill{height:100%;border-radius:4px;min-width:2px;transition:width .3s}
-.bar-value{width:50px;font-size:.78rem;color:#8b949e;text-align:right}
+.cl{color:#8b949e;font-size:.78rem;margin-bottom:.2rem}
+.cd{color:#484f58;font-size:.72rem;margin-bottom:.6rem}
+.cv{font-size:1.8rem;font-weight:700;color:#f0f6fc}
+.mt{margin-top:1rem}
+.ac-red{border-left:3px solid #f85149}.ac-yellow{border-left:3px solid #d29922}.ac-green{border-left:3px solid #3fb950}
+
+/* Grid */
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
+.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem}
+.g4{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem}
+
+/* Colors */
+.green{color:#3fb950}.yellow{color:#d29922}.red{color:#f85149}.blue{color:#58a6ff}.purple{color:#bc8cff}.dim{color:#484f58}
+.bg-green{background:#3fb950}.bg-yellow{background:#d29922}.bg-red{background:#f85149}
+
+/* Pills */
+.pills{display:flex;flex-wrap:wrap;gap:.4rem}
+.pill{background:#21262d;padding:.25rem .65rem;border-radius:14px;font-size:.72rem;color:#8b949e}
+.pill b{color:#c9d1d9;margin-left:.2rem}
+.pbtn{background:#21262d;border:1px solid #30363d;padding:.25rem .6rem;border-radius:14px;font-size:.72rem;color:#8b949e;cursor:pointer}
+.pbtn.active,.pbtn:hover{border-color:#58a6ff;color:#58a6ff}
+.cls-str{border-color:#3fb950!important;color:#3fb950!important}
+.cls-desc{border-color:#58a6ff!important;color:#58a6ff!important}
+.cls-noise{border-color:#484f58!important;color:#8b949e!important}
+
+/* Classification bars (horizontal, separate rows) */
+.cls-chart{margin-top:.5rem}
+.cls-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem}
+.cls-label{width:90px;font-size:.72rem;font-weight:600;text-align:right}
+.cls-structured{color:#3fb950}.cls-descriptive{color:#58a6ff}.cls-noise{color:#8b949e}
+.cls-track{flex:1;height:20px;background:#21262d;border-radius:4px;overflow:hidden}
+.cls-fill{height:100%;border-radius:4px}
+.cls-bg-structured{background:#238636}.cls-bg-descriptive{background:#1f6feb}.cls-bg-noise{background:#30363d}
+.cls-val{font-size:.7rem;color:#8b949e;width:80px}
+.cls-legend{display:flex;gap:1rem;margin-top:.4rem;flex-wrap:wrap}
+.cls-leg-item{font-size:.68rem}
+
+/* Distribution */
+.dist-bars{margin-top:.5rem}
+.dist-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem}
+.dist-label{width:55px;font-size:.75rem;font-weight:600}
+.dist-track{flex:1;height:22px;background:#21262d;border-radius:4px;overflow:hidden}
+.dist-fill{height:100%;border-radius:4px;min-width:2px}
+.dist-val{width:40px;font-size:.75rem;color:#8b949e;text-align:right}
+
+/* Bar charts */
+.bars{display:flex;flex-direction:column;gap:.55rem;margin-top:.5rem}
+.br{display:flex;align-items:center;gap:.5rem;padding:.15rem 0}
+.bl{width:150px;font-size:.72rem;color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt{flex:1;height:20px;background:#21262d;border-radius:4px;overflow:hidden}
+.bf{height:100%;border-radius:4px;min-width:2px}
+.bv{width:70px;font-size:.72rem;color:#8b949e;text-align:right}
 .fill-blue{background:linear-gradient(90deg,#1f6feb,#58a6ff)}
 .fill-green{background:linear-gradient(90deg,#238636,#3fb950)}
 .fill-yellow{background:linear-gradient(90deg,#9e6a03,#d29922)}
 .fill-red{background:linear-gradient(90deg,#b62324,#f85149)}
 .fill-purple{background:linear-gradient(90deg,#8957e5,#bc8cff)}
-.stat-list{display:flex;flex-direction:column;gap:.6rem;margin-top:.5rem}
-.stat-row{display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;border-bottom:1px solid #21262d;font-size:.85rem}
-.score{font-weight:600}.score.high{color:#f85149}.score.mid{color:#d29922}.score.low{color:#3fb950}
-table{width:100%;border-collapse:collapse;margin-top:.5rem}
-th,td{text-align:left;padding:.5rem .8rem;border-bottom:1px solid #21262d;font-size:.82rem}
-th{color:#484f58;font-weight:500;text-transform:uppercase;font-size:.7rem;letter-spacing:.05em}
-.muted{color:#484f58}
-.badge{display:inline-block;padding:.15rem .6rem;border-radius:12px;font-size:.72rem;font-weight:500}
+
+/* Histogram */
+.histogram{display:flex;align-items:flex-end;gap:4px;height:180px;margin:2rem 0 .5rem;padding-bottom:2rem}
+.hc{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end}
+.hbar{width:100%;border-radius:3px 3px 0 0;min-height:2px;opacity:.85;transition:opacity .2s}
+.hbar:hover{opacity:1}
+.hlabel{font-size:.6rem;color:#484f58;margin-top:.3rem}
+.hcount{font-size:.62rem;color:#8b949e;margin-bottom:.2rem;min-height:14px}
+.hscale{display:flex;justify-content:space-between;font-size:.7rem}
+
+/* Timeline */
+.tl{display:flex;align-items:flex-end;gap:2px;height:130px;margin-top:.5rem}
+.tlc{flex:1;display:flex;align-items:flex-end}
+.tlb{width:100%;background:linear-gradient(0deg,#1f6feb,#58a6ff);border-radius:2px 2px 0 0;min-height:3px;opacity:.7;transition:opacity .2s}
+.tlb:hover{opacity:1}
+.tll{display:flex;justify-content:space-between;font-size:.65rem;color:#484f58;margin-top:.3rem}
+
+/* Stat list */
+.stat-list{display:flex;flex-direction:column;gap:.4rem}
+.sr{display:flex;justify-content:space-between;align-items:center;padding:.35rem 0;border-bottom:1px solid #21262d;font-size:.8rem}
+.sc{font-weight:600}
+
+/* Tables */
+table{width:100%;border-collapse:collapse;margin-top:.3rem}
+th,td{text-align:left;padding:.4rem .6rem;border-bottom:1px solid #21262d;font-size:.78rem}
+th{color:#484f58;font-weight:500;text-transform:uppercase;font-size:.65rem;letter-spacing:.04em}
+.scroll-table{max-height:400px;overflow-y:auto}
+.more{color:#484f58;font-size:.72rem;padding:.5rem;text-align:center}
+
+/* Badges */
+.badge{display:inline-block;padding:.1rem .5rem;border-radius:12px;font-size:.68rem;font-weight:500}
 .badge.active{background:#0d4429;color:#3fb950}.badge.inactive{background:#3d1f00;color:#d29922}.badge.critical{background:#3d0000;color:#f85149}
-.legend{display:flex;gap:1rem;justify-content:center;margin-top:1rem;font-size:.8rem}
-.legend-item{display:flex;align-items:center;gap:.3rem}
-.legend-dot{width:10px;height:10px;border-radius:50%}
-.bg-green{background:#3fb950}.bg-yellow{background:#d29922}.bg-red{background:#f85149}
-.histogram{display:flex;align-items:flex-end;gap:4px;height:160px;margin-top:.8rem;padding-bottom:2rem;position:relative}
-.hist-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;position:relative}
-.hist-bar{width:100%;border-radius:3px 3px 0 0;min-height:2px;transition:height .3s;opacity:.85}
-.hist-bar:hover{opacity:1}
-.hist-label{font-size:.65rem;color:#484f58;margin-top:.3rem}
-.hist-count{font-size:.65rem;color:#8b949e;position:absolute;top:-16px}
-.timeline{display:flex;align-items:flex-end;gap:2px;height:150px;margin-top:.8rem}
-.tl-col{flex:1;display:flex;align-items:flex-end}
-.tl-bar{width:100%;background:linear-gradient(0deg,#1f6feb,#58a6ff);border-radius:2px 2px 0 0;min-height:3px;opacity:.7;transition:opacity .2s}
-.tl-bar:hover{opacity:1}
-.tl-labels{display:flex;justify-content:space-between;font-size:.7rem;color:#484f58;margin-top:.3rem}
-.treemap{display:flex;flex-wrap:wrap;gap:3px;margin-top:.8rem;min-height:100px}
-.tm-cell{border:1px solid;border-radius:4px;padding:.4rem;min-width:60px;min-height:50px;display:flex;flex-direction:column;justify-content:center;align-items:center;cursor:default;transition:transform .1s}
-.tm-cell:hover{transform:scale(1.03);z-index:1}
-.tm-name{font-size:.68rem;color:#c9d1d9;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-.tm-score{font-size:.6rem;color:#8b949e}
-#force-graph text{font-size:9px;fill:#8b949e;pointer-events:none}
-#force-graph circle{cursor:pointer;transition:r .2s}
-#force-graph circle:hover{r:10}
-#force-graph line{stroke:#21262d;stroke-width:.5}
-footer{margin-top:4rem;padding:1.5rem 0;border-top:1px solid #21262d;color:#484f58;font-size:.8rem;text-align:center}
+
+/* Donut legend */
+.legend{display:flex;gap:.8rem;justify-content:center;margin-top:.8rem;font-size:.72rem;flex-wrap:wrap;color:#8b949e}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:.2rem;vertical-align:middle}
+
+/* Sub-tabs */
+.sub-tabs{display:flex;gap:.3rem;margin:.5rem 0}
+.stab{background:none;border:1px solid #30363d;color:#8b949e;padding:.25rem .6rem;border-radius:5px;cursor:pointer;font-size:.72rem}
+.stab.active{border-color:#58a6ff;color:#58a6ff}
+.stab-content{display:none}.stab-content.active{display:block}
+
+/* Commit explorer */
+.commit-controls{display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:.8rem}
+.sinput{background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:.45rem .7rem;border-radius:6px;font-size:.8rem;flex:1;min-width:200px}
+.sinput:focus{outline:none;border-color:#58a6ff}
+.sinput-lg{width:100%;max-width:100%;font-size:.85rem;padding:.6rem .8rem}
+.commit-row{padding:.5rem 0;border-bottom:1px solid #161b22}
+.commit-row:hover{background:#161b2288}
+.commit-meta{display:flex;gap:.4rem;align-items:center;margin-bottom:.15rem;flex-wrap:wrap}
+.commit-sha{font-family:monospace;font-size:.72rem;color:#58a6ff;background:#1f6feb22;padding:.1rem .35rem;border-radius:3px}
+.commit-msg{font-size:.8rem;color:#c9d1d9}
+.commit-info{font-size:.68rem;color:#484f58;margin-top:.1rem}
+.commit-fns{font-size:.65rem;color:#484f58}
+.cls-badge-structured{background:#23863622;color:#3fb950;padding:.1rem .35rem;border-radius:3px;font-size:.65rem}
+.cls-badge-descriptive{background:#1f6feb22;color:#58a6ff;padding:.1rem .35rem;border-radius:3px;font-size:.65rem}
+.cls-badge-noise{background:#21262d;color:#484f58;padding:.1rem .35rem;border-radius:3px;font-size:.65rem}
+.cls-badge-unknown{background:#21262d;color:#484f58;padding:.1rem .35rem;border-radius:3px;font-size:.65rem}
+.paging{display:flex;align-items:center;justify-content:center;gap:1rem;padding:.8rem 0;font-size:.75rem;color:#484f58}
+.paging button{background:#21262d;border:1px solid #30363d;color:#8b949e;padding:.3rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem}
+.paging button:hover:not(:disabled){border-color:#58a6ff;color:#58a6ff}
+.paging button:disabled{opacity:.3;cursor:default}
+
+/* File explorer */
+.file-row-wrap{margin-bottom:.6rem;padding-bottom:.4rem;border-bottom:1px solid #21262d11}
+.clickable{cursor:pointer}.clickable:hover .bl{color:#58a6ff}
+.file-events{padding:.3rem 0 .3rem 1rem;border-left:2px solid #21262d;margin-left:.5rem}
+.fe-item{display:flex;gap:.4rem;align-items:center;padding:.3rem 0;font-size:.72rem;flex-wrap:wrap;border-bottom:1px solid #0d111755}
+.fe-sha{font-family:monospace;color:#58a6ff;font-size:.7rem}
+.fe-msg{color:#c9d1d9;flex:1;min-width:150px}
+.fe-meta{color:#484f58;font-size:.65rem}
+.fe-paging{justify-content:flex-start;padding:.4rem 0}
+.fe-paging button{font-size:.65rem;padding:.2rem .5rem}
+
+/* Folder tree */
+.folder-row{display:flex;align-items:center;gap:.4rem;padding:.35rem .5rem;border-bottom:1px solid #0d1117;font-size:.78rem;cursor:pointer;user-select:none}
+.folder-row:hover{background:#21262d44}
+.folder-toggle{width:16px;color:#484f58;font-size:.7rem;text-align:center}
+.file-leaf{display:flex;align-items:center;gap:.4rem;padding:.25rem .5rem;font-size:.72rem;border-bottom:1px solid #0d111744;color:#8b949e}
+.file-leaf:hover{background:#21262d22}
+.file-leaf-name{color:#c9d1d9;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.folder-name{color:#c9d1d9;font-weight:500}
+.folder-stats{color:#484f58;font-size:.68rem;flex:1;text-align:right;margin-right:.5rem}
+
+/* Search */
+.search-results{max-height:500px;overflow-y:auto;margin-top:.5rem}
+.sr-section{padding:.4rem 0;color:#8b949e;font-size:.72rem;font-weight:600;border-bottom:1px solid #21262d}
+
+footer{margin-top:3rem;padding:1.2rem 0;border-top:1px solid #21262d;color:#484f58;font-size:.75rem;text-align:center}
 footer a{color:#58a6ff;text-decoration:none}
-@media(max-width:768px){.nav-links{display:none}.grid-4{grid-template-columns:1fr 1fr}.bar-label{width:120px}}
+@media(max-width:768px){.nav{flex-direction:column;align-items:flex-start;gap:.5rem}.g4{grid-template-columns:1fr 1fr}.bl{width:100px}}
 `;
 
-// ── JavaScript ──
 const SCRIPT = `
-function initForceGraph(nodes,edges){
-  var svg=document.getElementById('force-graph');
-  if(!svg||nodes.length===0)return;
-  var W=800,H=500;
-  nodes.forEach(function(n){n.x=W/2+(Math.random()-.5)*W*.6;n.y=H/2+(Math.random()-.5)*H*.6;n.vx=0;n.vy=0});
-  var nodeMap={};nodes.forEach(function(n){nodeMap[n.id]=n});
-  for(var iter=0;iter<50;iter++){
-    for(var i=0;i<nodes.length;i++){for(var j=i+1;j<nodes.length;j++){
-      var dx=nodes[j].x-nodes[i].x,dy=nodes[j].y-nodes[i].y,d=Math.sqrt(dx*dx+dy*dy)||1,f=800/(d*d);
-      nodes[i].vx-=dx/d*f;nodes[i].vy-=dy/d*f;nodes[j].vx+=dx/d*f;nodes[j].vy+=dy/d*f;
-    }}
-    edges.forEach(function(e){var s=nodeMap[e.source],t=nodeMap[e.target];if(!s||!t)return;
-      var dx=t.x-s.x,dy=t.y-s.y,d=Math.sqrt(dx*dx+dy*dy)||1,f=d*.005;
-      s.vx+=dx/d*f;s.vy+=dy/d*f;t.vx-=dx/d*f;t.vy-=dy/d*f;
-    });
-    nodes.forEach(function(n){n.vx+=(W/2-n.x)*.001;n.vy+=(H/2-n.y)*.001;
-      n.vx*=.85;n.vy*=.85;n.x+=n.vx;n.y+=n.vy;
-      n.x=Math.max(20,Math.min(W-20,n.x));n.y=Math.max(20,Math.min(H-20,n.y));
-    });
-  }
-  var html='';
-  edges.forEach(function(e){var s=nodeMap[e.source],t=nodeMap[e.target];
-    if(s&&t)html+='<line x1="'+s.x+'" y1="'+s.y+'" x2="'+t.x+'" y2="'+t.y+'"/>';
-  });
-  nodes.forEach(function(n){var c=n.pr>.5?'#bc8cff':n.pr>.1?'#58a6ff':'#30363d';
-    html+='<circle cx="'+n.x+'" cy="'+n.y+'" r="'+n.r+'" fill="'+c+'" opacity="0.8"><title>'+n.id+' (PR: '+n.pr.toFixed(3)+')</title></circle>';
-    if(n.pr>.3)html+='<text x="'+(n.x+n.r+3)+'" y="'+(n.y+3)+'">'+n.id+'</text>';
-  });
-  svg.innerHTML=html;
-}
-document.querySelectorAll('.nav-links a').forEach(function(a){
-  a.addEventListener('click',function(e){e.preventDefault();
-    var t=document.querySelector(a.getAttribute('href'));
-    if(t)t.scrollIntoView({behavior:'smooth'});
+// Tab navigation
+document.querySelectorAll('#main-tabs .tab').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('#main-tabs .tab').forEach(function(b){b.classList.remove('active')});
+    document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('active')});
+    btn.classList.add('active');
+    document.getElementById('panel-'+btn.getAttribute('data-tab')).classList.add('active');
+    if(btn.getAttribute('data-tab')==='commits'&&!window._commitsInit){window._commitsInit=true;renderCommitPage();}
+    if(btn.getAttribute('data-tab')==='files'&&!window._treeInit){window._treeInit=true;buildFolderTree();}
   });
 });
+
+// Sub-tabs
+function showSubTab(id,btn){
+  var parent=btn.parentElement.parentElement;
+  parent.querySelectorAll('.stab-content').forEach(function(el){el.classList.remove('active')});
+  parent.querySelectorAll('.stab').forEach(function(el){el.classList.remove('active')});
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}
+
+// === COMMITS ===
+var commitPage_=0,commitPageSize=25,commitFilter='all',commitQuery='';
+function getFilteredCommits(){
+  return COMMITS.filter(function(c){
+    var matchCls=commitFilter==='all'||c.classification===commitFilter;
+    var matchQ=!commitQuery||c.message.toLowerCase().indexOf(commitQuery)!==-1||c.author.toLowerCase().indexOf(commitQuery)!==-1||c.sha.indexOf(commitQuery)!==-1;
+    return matchCls&&matchQ;
+  });
+}
+function renderCommitPage(){
+  var filtered=getFilteredCommits();
+  var start=commitPage_*commitPageSize;
+  var page=filtered.slice(start,start+commitPageSize);
+  var html='';
+  page.forEach(function(c){
+    html+='<div class="commit-row"><div class="commit-meta"><span class="commit-sha">'+c.sha+'</span><span class="cls-badge-'+c.classification.toLowerCase()+'">'+c.classification+'</span><span class="commit-fns">'+c.functionsAffected+' fn'+(c.functionsAffected!==1?'s':'')+'</span></div><div class="commit-msg">'+escH(c.message)+'</div><div class="commit-info">'+escH(c.author)+' — '+c.date+'</div></div>';
+  });
+  if(!html)html='<div class="dim" style="padding:1rem;text-align:center">No commits match</div>';
+  document.getElementById('commit-list').innerHTML=html;
+  document.getElementById('page-info').textContent=(start+1)+' \\u2013 '+Math.min(start+commitPageSize,filtered.length)+' of '+filtered.length;
+  document.getElementById('prev-btn').disabled=commitPage_===0;
+  document.getElementById('next-btn').disabled=start+commitPageSize>=filtered.length;
+}
+function commitPage(dir){commitPage_+=dir;renderCommitPage();}
+function filterCls(cls,btn){
+  commitFilter=cls;commitPage_=0;
+  document.querySelectorAll('.commit-controls .pbtn').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  renderCommitPage();
+}
+function filterCommits(){
+  commitQuery=(document.getElementById('commit-search').value||'').toLowerCase();
+  commitPage_=0;renderCommitPage();
+}
+
+// === FOLDER TREE ===
+function buildFolderTree(){
+  var tree=D.folderTree;
+  if(!tree||!tree.length){document.getElementById('folder-tree').innerHTML='<div class="dim">No folder data</div>';return}
+  var roots=tree.filter(function(f){return f.path.indexOf('/')===-1});
+  var html='';
+  roots.forEach(function(r){html+=renderFolder(r,tree,0);});
+  document.getElementById('folder-tree').innerHTML=html;
+}
+function renderFolder(folder,all,depth){
+  var children=(folder.children||[]).map(function(cp){return all.find(function(f){return f.path===cp})}).filter(Boolean);
+  var fileList=folder.fileList||[];
+  var hasContent=children.length>0||fileList.length>0;
+  var sc=folder.avgScore>=0.8?'red':folder.avgScore>=0.5?'yellow':'green';
+  var html='<div class="folder-row" style="padding-left:'+(depth*20+8)+'px" onclick="toggleFolder(this)">';
+  html+='<span class="folder-toggle">'+(hasContent?'\\u25b6':'\\u00a0')+'</span>';
+  html+='<span class="folder-name">'+(folder.path.split('/').pop()||folder.path)+'/</span>';
+  html+='<span class="folder-stats">'+folder.files+' files, '+folder.functions+' fns</span>';
+  html+='<span class="sc '+sc+'">'+folder.avgScore.toFixed(2)+'</span>';
+  html+='</div>';
+  if(hasContent){
+    html+='<div class="folder-children" style="display:none">';
+    children.forEach(function(c){html+=renderFolder(c,all,depth+1);});
+    // Show files in this folder
+    fileList.forEach(function(fp){
+      var fname=fp.split('/').pop()||fp;
+      html+='<div class="file-leaf" style="padding-left:'+((depth+1)*20+24)+'px">';
+      html+='<span class="file-leaf-name">'+escH(fname)+'</span>';
+      html+='</div>';
+    });
+    html+='</div>';
+  }
+  return html;
+}
+function toggleFolder(el){
+  var children=el.nextElementSibling;
+  if(!children||!children.classList.contains('folder-children'))return;
+  var isOpen=children.style.display!=='none';
+  children.style.display=isOpen?'none':'block';
+  el.querySelector('.folder-toggle').innerHTML=isOpen?'\\u25bc':'\\u25b6';
+}
+
+// === FILE EVENTS (paginated) ===
+var fePageSize=10;
+var fePages={};
+function toggleFileEvents(idx){
+  var el=document.getElementById('fe-'+idx);
+  var isHidden=el.style.display==='none';
+  el.style.display=isHidden?'block':'none';
+  if(isHidden&&!fePages[idx]){
+    fePages[idx]=0;
+    renderFileEvents(idx);
+  }
+}
+function renderFileEvents(idx){
+  var allEvts=(D.fileEvents[idx]||{}).events||[];
+  var page=fePages[idx]||0;
+  var start=page*fePageSize;
+  var slice=allEvts.slice(start,start+fePageSize);
+  var html='';
+  slice.forEach(function(e){
+    html+='<div class="fe-item"><span class="fe-sha">'+e.sha+'</span><span class="cls-badge-'+e.classification.toLowerCase()+'">'+e.classification+'</span><span class="fe-msg">'+escH(e.message)+'</span><span class="fe-meta">'+escH(e.author)+' \\u2014 '+e.date+'</span></div>';
+  });
+  if(!html)html='<div class="dim" style="padding:.5rem">No events</div>';
+  document.getElementById('fe-list-'+idx).innerHTML=html;
+  // Pagination controls
+  var total=allEvts.length;
+  var pagingHtml='';
+  if(total>fePageSize){
+    pagingHtml+='<button onclick="fePageNav('+idx+',-1)"'+(page===0?' disabled':'')+'>\\u2190 Prev</button>';
+    pagingHtml+='<span>'+(start+1)+' \\u2013 '+Math.min(start+fePageSize,total)+' of '+total+'</span>';
+    pagingHtml+='<button onclick="fePageNav('+idx+',1)"'+(start+fePageSize>=total?' disabled':'')+'>Next \\u2192</button>';
+  } else {
+    pagingHtml='<span>'+total+' event'+(total!==1?'s':'')+'</span>';
+  }
+  document.getElementById('fe-paging-'+idx).innerHTML=pagingHtml;
+}
+function fePageNav(idx,dir){
+  fePages[idx]=(fePages[idx]||0)+dir;
+  renderFileEvents(idx);
+}
+
+// === SEARCH ===
+function doSearch(){
+  var q=(document.getElementById('decision-search').value||'').toLowerCase();
+  var res=document.getElementById('search-results');
+  if(q.length<2){res.innerHTML='<div class="dim" style="padding:1.5rem;text-align:center">Type at least 2 characters</div>';return}
+  var html='';
+  var fns=FUNS.filter(function(f){return f.name.toLowerCase().indexOf(q)!==-1||f.file.toLowerCase().indexOf(q)!==-1});
+  if(fns.length>0){
+    html+='<div class="sr-section">Functions ('+fns.length+')</div>';
+    fns.slice(0,15).forEach(function(f){
+      var sc=f.score>=0.8?'red':f.score>=0.5?'yellow':'green';
+      html+='<div class="commit-row"><div class="commit-msg">'+escH(f.name)+'()</div><div class="commit-info">'+escH(f.file)+' \\u2014 <span class="sc '+sc+'">score: '+f.score.toFixed(2)+'</span></div></div>';
+    });
+  }
+  var cms=COMMITS.filter(function(c){return c.message.toLowerCase().indexOf(q)!==-1||c.sha.indexOf(q)!==-1});
+  if(cms.length>0){
+    html+='<div class="sr-section">Commits ('+cms.length+')</div>';
+    cms.slice(0,15).forEach(function(c){
+      html+='<div class="commit-row"><div class="commit-meta"><span class="commit-sha">'+c.sha+'</span><span class="cls-badge-'+c.classification.toLowerCase()+'">'+c.classification+'</span></div><div class="commit-msg">'+escH(c.message)+'</div><div class="commit-info">'+escH(c.author)+' \\u2014 '+c.date+'</div></div>';
+    });
+  }
+  var cbs=CONTRIBUTORS.filter(function(c){return c.author.toLowerCase().indexOf(q)!==-1});
+  if(cbs.length>0){
+    html+='<div class="sr-section">Contributors ('+cbs.length+')</div>';
+    cbs.slice(0,5).forEach(function(c){
+      html+='<div class="commit-row"><div class="commit-msg">'+escH(c.author)+'</div><div class="commit-info">'+c.commits+' commits \\u2014 last active: '+(c.lastActive||'').slice(0,10)+'</div></div>';
+    });
+  }
+  if(!html)html='<div class="dim" style="padding:1rem;text-align:center">No results for "'+escH(q)+'"</div>';
+  res.innerHTML=html;
+}
+function escH(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
 `;
