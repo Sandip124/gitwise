@@ -536,7 +536,7 @@ gitwise init --full-history
 - [x] Git log walker: per-function diffs per commit
 - [x] Commit classifier: STRUCTURED / DESCRIPTIVE / NOISE [4]
 - [x] Rule-based intent extraction for STRUCTURED + DESCRIPTIVE
-- [ ] Ollama for NOISE + CONFLICT only (Phase 2)
+- [x] LLM intent extraction: MCP sampling (host LLM) + Ollama fallback
 - [x] Append events to `decision_events`
 - [x] `wisegit init --full-history`
 - [x] MCP server with 3 tools (get_file_decisions, get_freeze_score, search_decisions)
@@ -595,11 +595,19 @@ gitwise init --full-history
 - [x] branch_snapshots table with full merge metadata
 
 ### Phase 5 — Polish + Optional Enhancement
-- [ ] README with Chesterton's Fence opener
-- [ ] Demo GIF
+- [x] README with Chesterton's Fence opener
+- [ ] Demo GIF (optional)
 - [ ] Optional: fine-tune Ollama on repo's own commit history [4]
-  (Task-adaptive pre-training from Hericko et al. improves intent extraction
-   significantly when trained on domain-specific diffs)
+
+### Bonus — MCP Enhancements (post-roadmap)
+- [x] `create_override` MCP tool — override frozen functions from Claude Code UI
+- [x] `get_function_history` MCP tool — full timeline for a function
+- [x] `get_theory_gaps` MCP tool — surfaces Naur death signals to AI
+- [x] `get_branch_context` MCP tool — branch merge history
+- [x] `extract_intent` MCP tool — uses host LLM (Claude) via MCP sampling
+  for NOISE commit intent extraction, Ollama as fallback for CLI mode
+- [x] `wisegit://manifest/{filePath}` resource template
+- [x] `check_before_edit` prompt
 
 ---
 

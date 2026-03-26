@@ -8,6 +8,7 @@ import { createOverrideFromMcp } from "./tools/create-override.js";
 import { getFunctionHistory } from "./tools/get-function-history.js";
 import { getTheoryGaps } from "./tools/get-theory-gaps.js";
 import { getBranchContext } from "./tools/get-branch-context.js";
+import { extractIntentForFunction } from "./tools/extract-intent.js";
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { logger } from "../shared/logger.js";
 import { GitwiseError } from "../shared/errors.js";
@@ -267,6 +268,35 @@ export function createMcpServer(db: Database.Database): McpServer {
         return { content: [{ type: "text" as const, text: result }] };
       } catch (err) {
         logger.error("get_branch_context failed", err);
+        return {
+          content: [{ type: "text" as const, text: sanitizeError(err) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // ── extract_intent ──
+  server.tool(
+    "extract_intent",
+    "Extract decision intent for a function's NOISE commits using the host LLM (no Ollama needed). Call this when a function has events with LOW or missing intent to recover the 'why' behind changes.",
+    {
+      filePath: safeFilePath.describe("Path to the file containing the function"),
+      functionName: safeFunctionName.describe("Name of the function"),
+      repoPath: safeRepoPath.describe("Absolute path to the git repository root"),
+    },
+    async ({ filePath, functionName, repoPath }) => {
+      try {
+        const result = await extractIntentForFunction(
+          server.server,
+          db,
+          filePath,
+          functionName,
+          repoPath
+        );
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (err) {
+        logger.error("extract_intent failed", err);
         return {
           content: [{ type: "text" as const, text: sanitizeError(err) }],
           isError: true,

@@ -102,8 +102,21 @@ Open the repo in Claude Code. It will automatically:
 | `get_branch_context` | Branch merge history — what was migrated and why |
 | `search_decisions` | Search past decisions by keyword across the entire repo |
 | `create_override` | Override a frozen function (user approves in Claude Code UI) |
+| `extract_intent` | Extract intent for NOISE commits using the host LLM — no Ollama needed |
 
 **MCP Resource:** `wisegit://manifest/{filePath}` — decision manifest as auto-discoverable resource
+
+### LLM Intent Extraction Strategy
+
+wisegit uses a smart fallback chain for extracting intent from NOISE commits:
+
+| Context | LLM Used | How |
+|---------|----------|-----|
+| **Inside Claude Code** | Host LLM (Claude) | MCP sampling — asks Claude to analyze the diff. Zero setup. |
+| **CLI with Ollama** | Ollama (llama3) | `wisegit init --ollama` — uses local Ollama instance |
+| **CLI without Ollama** | None | Rule-based extraction only, NOISE commits get no intent |
+
+Inside Claude Code, call `extract_intent` to retroactively recover intent for NOISE commits — uses Claude itself, no Ollama installation needed.
 
 ## CLI Commands
 
