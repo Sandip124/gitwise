@@ -43,6 +43,21 @@ export interface ReportData {
 
   // Contributors
   contributors: { author: string; commits: number; lastActive: string; isActive: boolean }[];
+
+  // Dependency graph edges (for force-directed graph)
+  dependencyEdges: { source: string; target: string }[];
+
+  // File-level aggregates (for treemap)
+  fileScores: { file: string; avgScore: number; functions: number; events: number; theoryRisk: string }[];
+
+  // Freeze score histogram buckets (for distribution chart)
+  scoreHistogram: { bucket: string; count: number }[];
+
+  // Commit classification breakdown (for timeline enhancement)
+  classificationBreakdown: { classification: string; count: number }[];
+
+  // Contributor-file matrix (who knows what)
+  contributorFiles: { author: string; file: string; commits: number }[];
 }
 
 export function collectReportData(
@@ -150,6 +165,74 @@ export function collectReportData(
     isActive: new Date(r.last_active) > sixMonthsAgo,
   }));
 
+  // Dependency graph edges (top 100 for visualization)
+  const dependencyEdges = (
+    db.prepare(`
+      SELECT DISTINCT de1.function_name as source, de2.function_name as target
+      FROM decision_events de1
+      JOIN decision_events de2 ON de1.commit_sha = de2.commit_sha
+        AND de1.function_id != de2.function_id
+        AND de1.repo_path = de2.repo_path
+      WHERE de1.repo_path = ?
+        AND de1.function_name IS NOT NULL
+        AND de2.function_name IS NOT NULL
+      LIMIT 150
+    `).all(repoPath) as { source: string; target: string }[]
+  );
+
+  // File-level aggregates for treemap
+  const fileScores = (
+    db.prepare(`
+      SELECT fs.file_path, AVG(fs.score) as avg_score,
+        COUNT(*) as functions, fs.theory_gap
+      FROM freeze_scores fs
+      WHERE fs.repo_path = ?
+      GROUP BY fs.file_path
+      ORDER BY avg_score DESC
+    `).all(repoPath) as { file_path: string; avg_score: number; functions: number; theory_gap: number }[]
+  ).map(r => {
+    const evtCount = (db.prepare(`SELECT COUNT(*) as cnt FROM decision_events WHERE file_path = ? AND repo_path = ?`).get(r.file_path, repoPath) as { cnt: number }).cnt;
+    return {
+      file: r.file_path,
+      avgScore: r.avg_score,
+      functions: r.functions,
+      events: evtCount,
+      theoryRisk: r.theory_gap ? "critical" : r.avg_score >= 0.5 ? "stable" : "open",
+    };
+  });
+
+  // Freeze score histogram (0.0–0.1, 0.1–0.2, ..., 0.9–1.0)
+  const scoreHistogram: { bucket: string; count: number }[] = [];
+  for (let i = 0; i < 10; i++) {
+    const lo = i / 10;
+    const hi = (i + 1) / 10;
+    const count = (
+      db.prepare(`SELECT COUNT(*) as cnt FROM freeze_scores WHERE repo_path = ? AND score >= ? AND score < ?`).get(repoPath, lo, hi === 1.0 ? 1.01 : hi) as { cnt: number }
+    ).cnt;
+    scoreHistogram.push({ bucket: `${lo.toFixed(1)}–${hi.toFixed(1)}`, count });
+  }
+
+  // Commit classification breakdown
+  const classificationBreakdown = (
+    db.prepare(`
+      SELECT classification, COUNT(*) as count
+      FROM decision_events
+      WHERE repo_path = ? AND classification IS NOT NULL
+      GROUP BY classification ORDER BY count DESC
+    `).all(repoPath) as { classification: string; count: number }[]
+  );
+
+  // Contributor-file matrix (top 50 combinations)
+  const contributorFiles = (
+    db.prepare(`
+      SELECT author, file_path, COUNT(DISTINCT commit_sha) as commits
+      FROM decision_events
+      WHERE repo_path = ? AND author IS NOT NULL
+      GROUP BY author, file_path
+      ORDER BY commits DESC LIMIT 50
+    `).all(repoPath) as { author: string; file_path: string; commits: number }[]
+  ).map(r => ({ author: r.author, file: r.file_path, commits: r.commits }));
+
   return {
     repoPath,
     generatedAt: now,
@@ -167,5 +250,10 @@ export function collectReportData(
     topFiles,
     topPageRank,
     contributors,
+    dependencyEdges,
+    fileScores,
+    scoreHistogram,
+    classificationBreakdown,
+    contributorFiles,
   };
 }
