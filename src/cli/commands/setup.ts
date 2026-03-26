@@ -95,7 +95,7 @@ export async function setupCommand(options: {
   const mcpConfig = {
     wisegit: {
       command: "npx",
-      args: ["wisegit", "serve"],
+      args: ["@sandip124/wisegit", "serve"],
     },
   };
 
@@ -204,7 +204,7 @@ export async function setupCommand(options: {
     try {
       execFileSync(
         "claude",
-        ["mcp", "add", "wisegit", "--", "npx", "wisegit", "serve"],
+        ["mcp", "add", "wisegit", "--", "npx", "@sandip124/wisegit", "serve"],
         { stdio: "pipe" }
       );
       console.log("  \u2713 Registered wisegit globally with Claude Code");

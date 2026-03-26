@@ -65,7 +65,7 @@ That's it. No Docker, no PostgreSQL, no external services.
 
 ```bash
 cd /path/to/your/repo
-npx wisegit setup
+npx @sandip124/wisegit setup
 ```
 
 This single command:
@@ -79,7 +79,7 @@ This single command:
 
 ```bash
 # Fetch issue/PR details from GitHub/GitLab
-GITHUB_TOKEN=ghp_... npx wisegit enrich
+GITHUB_TOKEN=ghp_... npx @sandip124/wisegit enrich
 ```
 
 This fetches referenced issues (e.g., `#134` in commit messages), detects Won't Fix / By Design decisions, and boosts freeze scores for functions linked to those issues.
@@ -145,12 +145,12 @@ wisegit hook install|uninstall                   # Manage git hooks (post-commit
 
 ### Option A: Per-repo (recommended)
 
-Run `npx wisegit setup` in any repo. It creates `.mcp.json` automatically.
+Run `npx @sandip124/wisegit setup` in any repo. It creates `.mcp.json` automatically.
 
 ### Option B: Global registration
 
 ```bash
-claude mcp add wisegit -- npx wisegit serve
+claude mcp add wisegit -- npx @sandip124/wisegit serve
 ```
 
 ### Option C: Manual `.mcp.json`
@@ -161,7 +161,7 @@ Create `.mcp.json` in your repo root:
 {
   "wisegit": {
     "command": "npx",
-    "args": ["wisegit", "serve"]
+    "args": ["@sandip124/wisegit", "serve"]
   }
 }
 ```

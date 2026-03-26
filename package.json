@@ -1,5 +1,5 @@
 {
-  "name": "wisegit",
+  "name": "@sandip124/wisegit",
   "version": "0.1.0",
   "description": "MCP server that extracts decision intent from git history and protects intentional code from AI modification",
   "type": "module",
