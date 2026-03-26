@@ -5,3 +5,9 @@ dist/
 .DS_Store
 coverage/
 *.tsbuildinfo
+
+# Auth tokens — NEVER commit
+.mcpregistry_*
+.mcp_publisher_token
+.npmrc
+*.token
