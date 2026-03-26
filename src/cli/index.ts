@@ -13,6 +13,7 @@ import { overrideCommand } from "./commands/override.js";
 import { branchCaptureCommand, branchListCommand, branchRecoverCommand } from "./commands/branch.js";
 import { syncCommand } from "./commands/sync.js";
 import { configCommand } from "./commands/config.js";
+import { teamStatusCommand, teamTheoryHealthCommand } from "./commands/team.js";
 
 const program = new Command();
 
@@ -176,6 +177,22 @@ program
   .option("--path <path>", "Path to the git repository")
   .action(async (action: string, args: string[], opts) => {
     await configCommand(action, args, { path: opts.path });
+  });
+
+program
+  .command("team-status")
+  .description("Team overview: enrichment coverage, overrides, contributors")
+  .option("--path <path>", "Path to the git repository")
+  .action(async (opts) => {
+    await teamStatusCommand({ path: opts.path });
+  });
+
+program
+  .command("team-health")
+  .description("Theory health: which functions have no active theory holders")
+  .option("--path <path>", "Path to the git repository")
+  .action(async (opts) => {
+    await teamTheoryHealthCommand({ path: opts.path });
   });
 
 program.parse();

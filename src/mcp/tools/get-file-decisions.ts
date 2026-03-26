@@ -4,6 +4,7 @@ import { FreezeStore } from "../../db/freeze-store.js";
 import { OverrideStore } from "../../db/override-store.js";
 import { getFreezeStatus } from "../../core/recovery-levels.js";
 import { DecisionEvent, FreezeScore, RecoveryLevel } from "../../core/types.js";
+import { getTheoryHolders, FunctionTheory } from "../../graph/theory-holders.js";
 
 export interface FileDecisionsResult {
   filePath: string;
@@ -20,6 +21,8 @@ interface FunctionSummary {
   decisions: { intent: string; confidence: string; commitSha: string }[];
   overrideReason?: string;
   overrideExpires?: string;
+  theoryHolders?: string; // "dev-a (active), dev-b (inactive 8mo)"
+  theoryRisk?: string;    // "healthy" | "fragile" | "critical"
 }
 
 export function getFileDecisions(
@@ -72,6 +75,25 @@ export function getFileDecisions(
     // Check for active override
     const override = overrideStore.getActiveOverride(functionId);
 
+    // Get theory holders
+    let theoryHolders: string | undefined;
+    let theoryRisk: string | undefined;
+    try {
+      const theory = getTheoryHolders(db, repoPath ?? "", functionId);
+      if (theory.holders.length > 0) {
+        theoryHolders = theory.holders
+          .slice(0, 3)
+          .map((h) => {
+            const status = h.isActive ? "active" : "inactive";
+            return `${h.author} (${status})`;
+          })
+          .join(", ");
+        theoryRisk = theory.riskLevel;
+      }
+    } catch {
+      // Theory holder lookup is non-critical
+    }
+
     functions.push({
       functionName:
         score?.functionName ??
@@ -84,6 +106,8 @@ export function getFileDecisions(
       decisions,
       overrideReason: override?.reason,
       overrideExpires: override?.expiresAt?.toISOString().slice(0, 10),
+      theoryHolders,
+      theoryRisk,
     });
   }
 
@@ -111,6 +135,15 @@ function formatManifest(
     lines.push(
       `${fn.status}:  ${fn.functionName}()  [score: ${scoreStr}] [Recovery: ${fn.recoveryLevel}]`
     );
+
+    if (fn.theoryHolders) {
+      lines.push(`  Theory holders: ${fn.theoryHolders}`);
+      if (fn.theoryRisk === "critical") {
+        lines.push(`  \u26a0 FULL NAUR DEATH: No active contributors hold this function's theory.`);
+      } else if (fn.theoryRisk === "fragile") {
+        lines.push(`  \u26a0 Single point of theory failure — only 1 active contributor.`);
+      }
+    }
 
     if (fn.overrideReason) {
       lines.push(`  \u26a0 ACTIVE OVERRIDE: ${fn.overrideReason}`);

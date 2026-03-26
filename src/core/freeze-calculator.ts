@@ -7,6 +7,7 @@ import {
 } from "./types.js";
 import { CATEGORY_WEIGHTS, GIT_SIGNALS } from "./signal-weights.js";
 import { getRecoveryLevel } from "./recovery-levels.js";
+import { detectCommitOrigin, originScoreModifier, CommitOrigin } from "./commit-origin.js";
 
 export interface FreezeScoreContext {
   pagerank?: number;
@@ -17,6 +18,7 @@ export interface FreezeScoreContext {
   testSignalScore?: number;
   naurScore?: number;
   arandaScore?: number;
+  repoPath?: string; // For AI origin detection
 }
 
 /**
@@ -39,7 +41,7 @@ export function calculateFreezeScore(
   const filePath = events[0].filePath;
   const functionName = events[0].functionName ?? "";
 
-  const gitScore = calculateGitSignals(events);
+  const gitScore = calculateGitSignals(events, ctx?.repoPath);
   const issueScore = ctx?.issueSignalScore ?? calculateIssueSignals(events);
   const arandaScore = ctx?.arandaScore ?? calculateArandaSignals(events);
   const naurScore = ctx?.naurScore ?? 0;
@@ -87,8 +89,10 @@ export function calculateFreezeScore(
 
 /**
  * Compute the git history signal score (0–1) from events.
+ * Scores are weighted by commit origin — AI-unreviewed commits
+ * carry less theory weight than human or human-reviewed commits.
  */
-function calculateGitSignals(events: DecisionEvent[]): number {
+function calculateGitSignals(events: DecisionEvent[], repoPath?: string): number {
   let score = 0;
 
   // Revert count
@@ -157,6 +161,23 @@ function calculateGitSignals(events: DecisionEvent[]): number {
   ).length;
   if (highConfidenceCount > 0) {
     score += Math.min(highConfidenceCount * 0.05, 0.15);
+  }
+
+  // Apply AI origin modifier — AI-unreviewed commits carry less theory weight
+  if (repoPath) {
+    let totalModifier = 0;
+    let modifierCount = 0;
+    for (const e of events) {
+      if (e.author) {
+        const origin = detectCommitOrigin(e.author, repoPath, e.commitMessage ?? undefined);
+        totalModifier += originScoreModifier(origin);
+        modifierCount++;
+      }
+    }
+    if (modifierCount > 0) {
+      const avgModifier = totalModifier / modifierCount;
+      score *= avgModifier;
+    }
   }
 
   return clamp(score, 0, 1);

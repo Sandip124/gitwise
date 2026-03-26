@@ -7,7 +7,7 @@ export async function auditCommand(
   filePath: string,
   options: { path?: string }
 ): Promise<void> {
-  const repoPath = options.path ? resolve(options.path) : undefined;
+  const repoPath = resolve(options.path ?? process.cwd());
   const db = getDb();
 
   try {
