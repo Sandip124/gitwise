@@ -1,5 +1,7 @@
 import Database from "better-sqlite3";
 import { logger } from "../shared/logger.js";
+import { loadIgnorePaths, shouldIgnorePath } from "../shared/path-filter.js";
+import { parseFunctionId } from "../core/types.js";
 
 export interface TheoryHolder {
   author: string;
@@ -107,14 +109,16 @@ export function getRepoTheoryHealth(
   critical: number;
   topRisks: FunctionTheory[];
 } {
+  const ignorePaths = loadIgnorePaths(repoPath);
+
   const allFunctions = (
     db
       .prepare(
-        `SELECT DISTINCT function_id FROM decision_events
+        `SELECT DISTINCT function_id, file_path FROM decision_events
          WHERE repo_path = ? AND function_id IS NOT NULL`
       )
-      .all(repoPath) as { function_id: string }[]
-  ).map((r) => r.function_id);
+      .all(repoPath) as { function_id: string; file_path: string }[]
+  ).filter((r) => !shouldIgnorePath(r.file_path, ignorePaths)).map((r) => r.function_id);
 
   let healthy = 0;
   let fragile = 0;

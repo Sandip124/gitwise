@@ -12,12 +12,72 @@ npm test          # 100 unit tests
 npm run lint      # TypeScript type-check
 ```
 
-## Development
+## Local Development (no npm publish needed)
+
+### Option 1: Run directly from source
 
 ```bash
-npm run cli -- init --full-history --path /path/to/repo   # Test indexing
-npm run cli -- audit <file>                                # Test manifest
-npm run cli -- report --path /path/to/repo                 # Test report
+# Any wisegit command — just prefix with this:
+node --import tsx/esm src/cli/index.ts <command>
+
+# Examples:
+node --import tsx/esm src/cli/index.ts setup --path /path/to/repo
+node --import tsx/esm src/cli/index.ts audit src/some-file.ts --path /path/to/repo
+node --import tsx/esm src/cli/index.ts report --path /path/to/repo
+```
+
+### Option 2: npm link (makes `wisegit` command globally available)
+
+```bash
+cd /path/to/wisegit
+npm run build       # compile TypeScript to dist/
+npm link            # creates global symlink
+
+# Now use wisegit anywhere:
+wisegit setup --path /path/to/any/repo
+wisegit audit src/file.ts
+wisegit report
+```
+
+To unlink: `npm unlink -g @sandip124/wisegit`
+
+### Option 3: Test MCP server locally with Claude Code
+
+Create `.mcp.json` in any repo pointing to your local source:
+
+```json
+{
+  "wisegit": {
+    "command": "node",
+    "args": ["--import", "tsx/esm", "/absolute/path/to/wisegit/src/mcp/index.ts"]
+  }
+}
+```
+
+Open that repo in Claude Code — it will start your local MCP server. Changes to source are picked up on restart.
+
+### Running tests
+
+```bash
+npm test              # 100 unit tests
+npm run lint          # TypeScript type-check
+npm run build         # Full compile to dist/
+```
+
+### Testing on a real repo
+
+```bash
+# Index a repo
+node --import tsx/esm src/cli/index.ts init --full-history --path /path/to/repo
+
+# Recompute with full signals (PageRank, theory gaps, co-change)
+node --import tsx/esm src/cli/index.ts recompute --path /path/to/repo
+
+# Enrich with GitHub issues
+GITHUB_TOKEN=ghp_... node --import tsx/esm src/cli/index.ts enrich --path /path/to/repo
+
+# Generate visual report
+node --import tsx/esm src/cli/index.ts report --path /path/to/repo
 ```
 
 ## Project Structure
