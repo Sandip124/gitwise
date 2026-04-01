@@ -101,6 +101,25 @@ export const CO_CHANGE_SIGNALS = {
   sharedDomainVariables: 0.15, // Aryani [9]: domain coupling predicts architectural deps
 } as const;
 
+// ── Obsolescence Signals (reduce freeze scores) ──
+
+export const OBSOLESCENCE_WEIGHTS = {
+  deadCode: 0.30,               // Zero callers in call graph
+  staleSubgraph: 0.20,          // All callers also dormant 2+ years
+  migrationLeftover: 0.25,      // Uses deprecated patterns from branch context
+  obsoleteDependency: 0.15,     // Imports package not in current deps
+  supersededFunction: 0.10,     // Newer version exists (*V2, @deprecated)
+  selfAdmittedDebt: 0.20,       // SAAD: "TODO: remove", "legacy compat" — SAAD research (2025)
+  changeBurstAbsence: 0.15,     // Was hot, now silent while neighbors active — Herzig [13]
+  coChangeDivergence: 0.15,     // Co-change partners active but this function isn't — Tornhill
+} as const;
+
+/** Never fully zero out a score — detection is uncertain (dynamic dispatch, reflection) */
+export const MAX_OBSOLESCENCE_PENALTY = 0.70;
+
+/** Months of inactivity before stale subgraph signal kicks in */
+export const STALE_THRESHOLD_MONTHS = 24;
+
 // ── Recovery level thresholds ──
 
 export const RECOVERY_THRESHOLDS = {

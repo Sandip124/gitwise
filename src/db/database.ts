@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdirSync, existsSync } from "node:fs";
+import { mkdirSync, existsSync, chmodSync } from "node:fs";
 import { dirname } from "node:path";
 import { loadConfig } from "../shared/config.js";
 
@@ -21,7 +21,13 @@ export function getDb(): Database.Database {
     mkdirSync(dir, { recursive: true });
   }
 
+  const isNew = !existsSync(dbPath);
   db = new Database(dbPath);
+
+  // Restrict permissions on new databases (owner-only read/write)
+  if (isNew) {
+    try { chmodSync(dbPath, 0o600); } catch { /* non-critical on Windows */ }
+  }
 
   // Enable WAL mode for better concurrent read performance
   db.pragma("journal_mode = WAL");

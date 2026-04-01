@@ -1,24 +1,29 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
-import { FreezeScore, RecoveryLevel, SignalBreakdown } from "../core/types.js";
+import { FreezeScore, RecoveryLevel, SignalBreakdown, ObsolescenceBreakdown } from "../core/types.js";
 
 export class FreezeStore {
   constructor(private db: Database.Database) {}
 
-  upsertScore(repoPath: string, score: FreezeScore): void {
+  upsertScore(repoPath: string, score: FreezeScore, branch?: string): void {
+    const branchName = branch ?? score.branch ?? "HEAD";
     this.db
       .prepare(
         `INSERT INTO freeze_scores
           (id, repo_path, function_id, file_path, function_name, score,
            recovery_level, signal_breakdown, pagerank, theory_gap,
+           computed_branch, obsolescence_penalty, obsolescence_breakdown,
            last_recomputed, invalidated)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0)
          ON CONFLICT (function_id) DO UPDATE SET
            score = excluded.score,
            recovery_level = excluded.recovery_level,
            signal_breakdown = excluded.signal_breakdown,
            pagerank = excluded.pagerank,
            theory_gap = excluded.theory_gap,
+           computed_branch = excluded.computed_branch,
+           obsolescence_penalty = excluded.obsolescence_penalty,
+           obsolescence_breakdown = excluded.obsolescence_breakdown,
            last_recomputed = datetime('now'),
            invalidated = 0`
       )
@@ -32,7 +37,10 @@ export class FreezeStore {
         score.recoveryLevel,
         JSON.stringify(score.signalBreakdown),
         score.pagerank,
-        score.theoryGap ? 1 : 0
+        score.theoryGap ? 1 : 0,
+        branchName,
+        score.obsolescence?.penalty ?? 0,
+        JSON.stringify(score.obsolescence ?? {})
       );
   }
 
@@ -71,6 +79,17 @@ export class FreezeStore {
 }
 
 function rowToScore(row: Record<string, unknown>): FreezeScore {
+  const obsolescenceRaw = row.obsolescence_breakdown as string | undefined;
+  let obsolescence: ObsolescenceBreakdown | undefined;
+  if (obsolescenceRaw) {
+    try {
+      const parsed = JSON.parse(obsolescenceRaw);
+      if (parsed && typeof parsed.penalty === "number" && parsed.penalty > 0) {
+        obsolescence = parsed as ObsolescenceBreakdown;
+      }
+    } catch { /* skip */ }
+  }
+
   return {
     functionId: row.function_id as string,
     filePath: row.file_path as string,
@@ -80,7 +99,9 @@ function rowToScore(row: Record<string, unknown>): FreezeScore {
     signalBreakdown: JSON.parse(
       (row.signal_breakdown as string) ?? "{}"
     ) as SignalBreakdown,
+    obsolescence,
     theoryGap: row.theory_gap === 1,
     pagerank: row.pagerank as number,
+    branch: (row.computed_branch as string) ?? "HEAD",
   };
 }

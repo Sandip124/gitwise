@@ -77,10 +77,13 @@ export interface FreezeScore {
   filePath: string;
   functionName: string;
   score: number; // 0–1
+  baseScore?: number; // before obsolescence penalty
   recoveryLevel: RecoveryLevel;
   signalBreakdown: SignalBreakdown;
+  obsolescence?: ObsolescenceBreakdown;
   theoryGap: boolean;
   pagerank: number;
+  branch?: string;
 }
 
 export interface SignalBreakdown {
@@ -91,6 +94,18 @@ export interface SignalBreakdown {
   structural: number;
   naurTheory: number;
   arandaSignals: number;
+}
+
+export interface ObsolescenceBreakdown {
+  deadCode: number;            // 0–1: zero callers in call graph
+  staleSubgraph: number;       // 0–1: all callers also dormant
+  migrationLeftover: number;   // 0–1: uses patterns from do_not_reintroduce
+  obsoleteDependency: number;  // 0–1: imports removed/deprecated package
+  supersededFunction: number;  // 0–1: newer version exists (*V2, @deprecated)
+  selfAdmittedDebt: number;    // 0–1: SAAD comments (TODO: remove, legacy, deprecated)
+  changeBurstAbsence: number;  // 0–1: was once hot, now silent while neighbors active
+  coChangeDivergence: number;  // 0–1: historically co-changed files no longer touch this
+  penalty: number;             // 0–0.7: combined weighted penalty
 }
 
 export interface IntentResult {
