@@ -5,6 +5,7 @@ import { OverrideStore } from "../../db/override-store.js";
 import { EventStore } from "../../db/event-store.js";
 import { FreezeStore } from "../../db/freeze-store.js";
 import { calculateFreezeScore } from "../../core/freeze-calculator.js";
+import { recordCalibrationFeedback } from "../../core/calibration.js";
 import {
   makeFunctionId,
   parseFunctionId,
@@ -218,6 +219,25 @@ export async function overrideCommand(
       approved_by: null,
     };
     appendJsonl(paths.overrides, sharedOverride);
+
+    // Record calibration feedback: override on obsolescence-penalized function = false positive
+    if (currentScore?.obsolescence && currentScore.obsolescence.penalty > 0) {
+      try {
+        recordCalibrationFeedback(
+          db, repoPath, functionId, "FALSE_POSITIVE",
+          {
+            deadCode: currentScore.obsolescence.deadCode,
+            staleSubgraph: currentScore.obsolescence.staleSubgraph,
+            migrationLeftover: currentScore.obsolescence.migrationLeftover,
+            obsoleteDependency: currentScore.obsolescence.obsoleteDependency,
+            supersededFunction: currentScore.obsolescence.supersededFunction,
+            selfAdmittedDebt: currentScore.obsolescence.selfAdmittedDebt ?? 0,
+            changeBurstAbsence: currentScore.obsolescence.changeBurstAbsence ?? 0,
+            coChangeDivergence: currentScore.obsolescence.coChangeDivergence ?? 0,
+          }
+        );
+      } catch { /* Non-critical */ }
+    }
 
     // Recompute freeze score (override resets protection)
     const allEvents = eventStore.getEventsForFunction(functionId, repoPath);

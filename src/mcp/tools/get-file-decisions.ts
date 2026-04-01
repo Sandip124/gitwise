@@ -16,6 +16,7 @@ interface FunctionSummary {
   functionName: string;
   functionId: string;
   freezeScore: number;
+  baseScore?: number;
   recoveryLevel: RecoveryLevel;
   status: string;
   decisions: { intent: string; confidence: string; commitSha: string }[];
@@ -23,6 +24,7 @@ interface FunctionSummary {
   overrideExpires?: string;
   theoryHolders?: string; // "dev-a (active), dev-b (inactive 8mo)"
   theoryRisk?: string;    // "healthy" | "fragile" | "critical"
+  obsolescenceNote?: string; // e.g., "dead code (no callers), superseded by fooV2()"
 }
 
 export function getFileDecisions(
@@ -94,6 +96,22 @@ export function getFileDecisions(
       // Theory holder lookup is non-critical
     }
 
+    // Build obsolescence note
+    let obsolescenceNote: string | undefined;
+    const obs = score?.obsolescence;
+    if (obs && obs.penalty > 0) {
+      const reasons: string[] = [];
+      if (obs.deadCode > 0) reasons.push("dead code (no callers)");
+      if (obs.staleSubgraph > 0) reasons.push("stale subgraph (all callers dormant)");
+      if (obs.migrationLeftover > 0) reasons.push("migration leftover");
+      if (obs.obsoleteDependency > 0) reasons.push("uses obsolete dependency");
+      if (obs.supersededFunction > 0) reasons.push("superseded by newer version");
+      if (obs.selfAdmittedDebt > 0) reasons.push("self-admitted aging debt (TODO/legacy comments)");
+      if (obs.changeBurstAbsence > 0) reasons.push("was actively changed, now silent while neighbors active");
+      if (obs.coChangeDivergence > 0) reasons.push("co-change partners active but this function abandoned");
+      obsolescenceNote = reasons.join(", ") + ` (penalty: -${(obs.penalty * 100).toFixed(0)}%)`;
+    }
+
     functions.push({
       functionName:
         score?.functionName ??
@@ -101,6 +119,7 @@ export function getFileDecisions(
         functionId,
       functionId,
       freezeScore: score?.score ?? 0,
+      baseScore: score?.baseScore,
       recoveryLevel: level,
       status: override ? "OVERRIDE" : status,
       decisions,
@@ -108,6 +127,7 @@ export function getFileDecisions(
       overrideExpires: override?.expiresAt?.toISOString().slice(0, 10),
       theoryHolders,
       theoryRisk,
+      obsolescenceNote,
     });
   }
 
@@ -132,16 +152,22 @@ function formatManifest(
 
   for (const fn of functions) {
     const scoreStr = fn.freezeScore.toFixed(2);
+    const baseStr = fn.baseScore ? ` [base: ${fn.baseScore.toFixed(2)}]` : "";
     lines.push(
-      `${fn.status}:  ${fn.functionName}()  [score: ${scoreStr}] [Recovery: ${fn.recoveryLevel}]`
+      `${fn.status}:  ${fn.functionName}()  [score: ${scoreStr}]${baseStr} [Recovery: ${fn.recoveryLevel}]`
     );
+
+    if (fn.obsolescenceNote) {
+      lines.push(`  \u26a0 OBSOLESCENCE: ${fn.obsolescenceNote}`);
+      lines.push(`    This function may be dead or superseded. Safe to remove or refactor.`);
+    }
 
     if (fn.theoryHolders) {
       lines.push(`  Theory holders: ${fn.theoryHolders}`);
       if (fn.theoryRisk === "critical") {
-        lines.push(`  \u26a0 FULL NAUR DEATH: No active contributors hold this function's theory.`);
+        lines.push(`  \u26a0 No active contributors — knowledge of why this code exists may be lost.`);
       } else if (fn.theoryRisk === "fragile") {
-        lines.push(`  \u26a0 Single point of theory failure — only 1 active contributor.`);
+        lines.push(`  \u26a0 Single point of knowledge — only 1 active contributor.`);
       }
     }
 

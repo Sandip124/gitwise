@@ -15,6 +15,7 @@ import { syncCommand } from "./commands/sync.js";
 import { configCommand } from "./commands/config.js";
 import { teamStatusCommand, teamTheoryHealthCommand } from "./commands/team.js";
 import { reportCommand } from "./commands/report.js";
+import { calibrateCommand } from "./commands/calibrate.js";
 
 const program = new Command();
 
@@ -205,6 +206,15 @@ program
   .option("--path <path>", "Path to the git repository")
   .action(async (opts) => {
     await teamTheoryHealthCommand({ path: opts.path });
+  });
+
+program
+  .command("calibrate")
+  .description("Show calibrated obsolescence weights for this repository")
+  .option("--path <path>", "Path to the git repository")
+  .option("--validate", "Show detailed calibration report")
+  .action(async (opts) => {
+    await calibrateCommand({ path: opts.path, validate: opts.validate });
   });
 
 program.parse();

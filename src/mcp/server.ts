@@ -28,6 +28,7 @@ const safeRepoPath = z
   .min(1)
   .max(500)
   .refine((s) => !s.includes("\0"), "Null bytes not allowed")
+  .refine((s) => !s.includes(".."), "Path traversal not allowed")
   .optional();
 
 const safeFunctionName = z.string().min(1).max(200);

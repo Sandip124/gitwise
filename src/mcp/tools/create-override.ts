@@ -4,6 +4,7 @@ import { OverrideStore } from "../../db/override-store.js";
 import { EventStore } from "../../db/event-store.js";
 import { FreezeStore } from "../../db/freeze-store.js";
 import { calculateFreezeScore } from "../../core/freeze-calculator.js";
+import { recordCalibrationFeedback } from "../../core/calibration.js";
 import {
   makeFunctionId,
   parseFunctionId,
@@ -110,6 +111,23 @@ export function createOverrideFromMcp(
     },
   };
   eventStore.appendEvents([overrideEvent]);
+
+  // Record calibration feedback: override on obsolescence-penalized function = false positive
+  if (currentScore?.obsolescence && currentScore.obsolescence.penalty > 0) {
+    try {
+      const obs = currentScore.obsolescence;
+      recordCalibrationFeedback(db, "", functionId, "FALSE_POSITIVE", {
+        deadCode: obs.deadCode,
+        staleSubgraph: obs.staleSubgraph,
+        migrationLeftover: obs.migrationLeftover,
+        obsoleteDependency: obs.obsoleteDependency,
+        supersededFunction: obs.supersededFunction,
+        selfAdmittedDebt: obs.selfAdmittedDebt ?? 0,
+        changeBurstAbsence: obs.changeBurstAbsence ?? 0,
+        coChangeDivergence: obs.coChangeDivergence ?? 0,
+      });
+    } catch { /* Non-critical */ }
+  }
 
   // Build response
   const lines: string[] = [

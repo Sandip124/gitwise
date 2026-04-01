@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { getDb, closeDb } from "../../db/database.js";
+import { runMigrations } from "../../db/migrator.js";
 import { runRecomputePipeline } from "../../pipeline/recompute-pipeline.js";
 import { logger } from "../../shared/logger.js";
 
@@ -8,6 +9,7 @@ export async function recomputeCommand(options: {
 }): Promise<void> {
   const repoPath = resolve(options.path ?? process.cwd());
   const db = getDb();
+  runMigrations(db);
 
   try {
     const result = await runRecomputePipeline(
@@ -26,6 +28,7 @@ export async function recomputeCommand(options: {
     console.log(`\nRecompute complete:`);
     console.log(`  Functions recomputed: ${result.functionsRecomputed}`);
     console.log(`  Theory gaps found:    ${result.theoryGapsFound}`);
+    console.log(`  Obsolescence signals: ${result.obsolescenceDetected}`);
     console.log(`  Call graph:           ${result.graphNodes} nodes, ${result.graphEdges} edges`);
     console.log(`  Duration:             ${(result.durationMs / 1000).toFixed(1)}s`);
   } catch (err) {

@@ -1,10 +1,11 @@
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve, dirname } from "node:path";
 import {
   existsSync,
   writeFileSync,
   readFileSync,
   lstatSync,
+  mkdirSync,
+  chmodSync,
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { getDb, closeDb } from "../../db/database.js";
@@ -43,6 +44,144 @@ decisions using git history. Before modifying any file, the AI agent MUST:
 7. When the manifest shows **OVERRIDE**, the function is under active
    modification — proceed but note the override reason and expiry.
 `.trim();
+
+const HOOK_SCRIPT = `#!/bin/bash
+# wisegit-check.sh
+# PreToolUse hook — blocks Edit/Write on FROZEN functions
+# Receives tool input as JSON via stdin
+
+INPUT=$(cat)
+
+# Extract the file path from the tool input
+FILE=$(echo "$INPUT" | jq -r '.tool_input.path // empty')
+
+if [ -z "$FILE" ]; then
+  exit 0
+fi
+
+# Only check files that exist in the repo
+if [ ! -f "$FILE" ]; then
+  exit 0
+fi
+
+# Run wisegit audit and capture output + exit code
+AUDIT=$(wisegit audit "$FILE" 2>&1)
+AUDIT_EXIT=$?
+
+# wisegit not installed or not initialized — warn but don't block
+if [ $AUDIT_EXIT -ne 0 ] && echo "$AUDIT" | grep -qiE "not found|not initialized|no database"; then
+  echo "⚠ wisegit: could not check $FILE — run 'wisegit init' to enable decision protection" >&2
+  exit 0
+fi
+
+# Block on FROZEN functions (match manifest format exactly to avoid false positives)
+if echo "$AUDIT" | grep -q "^FROZEN:"; then
+  FROZEN_LINES=$(echo "$AUDIT" | grep "^FROZEN:")
+
+  echo "" >&2
+  echo "🚫 wisegit BLOCKED: $FILE contains FROZEN functions" >&2
+  echo "" >&2
+  echo "$FROZEN_LINES" >&2
+  echo "" >&2
+  echo "These functions have high freeze scores — modifying them risks breaking intentional decisions." >&2
+  echo "To proceed, run: wisegit override <function> --reason \\"your reason here\\"" >&2
+  echo "" >&2
+  exit 2
+fi
+
+# Warn on STABLE functions but allow
+if echo "$AUDIT" | grep -q "^STABLE:"; then
+  STABLE_LINES=$(echo "$AUDIT" | grep "^STABLE:")
+
+  echo "" >&2
+  echo "⚠ wisegit WARNING: $FILE contains STABLE functions" >&2
+  echo "" >&2
+  echo "$STABLE_LINES" >&2
+  echo "" >&2
+  echo "Review the decision manifest before modifying these functions." >&2
+  echo "Run: wisegit audit $FILE" >&2
+  echo "" >&2
+fi
+
+exit 0
+`;
+
+function writeClaudeHooks(repoRoot: string): { hookCreated: boolean; settingsUpdated: boolean; hookSkipped: boolean; settingsSkipped: boolean } {
+  const hookDir = resolve(repoRoot, ".claude", "hooks");
+  const hookPath = resolve(hookDir, "wisegit-check.sh");
+  const settingsPath = resolve(repoRoot, ".claude", "settings.json");
+
+  let hookCreated = false;
+  let settingsUpdated = false;
+  let hookSkipped = false;
+  let settingsSkipped = false;
+
+  // Write .claude/hooks/wisegit-check.sh
+  if (!existsSync(hookPath)) {
+    mkdirSync(hookDir, { recursive: true });
+    writeFileSync(hookPath, HOOK_SCRIPT);
+    chmodSync(hookPath, 0o755);
+    hookCreated = true;
+  } else {
+    hookSkipped = true;
+  }
+
+  // Write or merge .claude/settings.json
+  const wisegitHookEntry = {
+    matcher: "Edit|Write",
+    hooks: [
+      {
+        type: "command",
+        command: ".claude/hooks/wisegit-check.sh",
+      },
+    ],
+  };
+
+  if (!existsSync(settingsPath)) {
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const settings = {
+      hooks: {
+        PreToolUse: [wisegitHookEntry],
+      },
+    };
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    settingsUpdated = true;
+  } else {
+    try {
+      const raw = readFileSync(settingsPath, "utf-8");
+      const settings = JSON.parse(raw);
+
+      if (!settings.hooks) {
+        settings.hooks = {};
+      }
+      if (!Array.isArray(settings.hooks.PreToolUse)) {
+        settings.hooks.PreToolUse = [];
+      }
+
+      // Check if wisegit hook already registered
+      const alreadyExists = settings.hooks.PreToolUse.some(
+        (entry: Record<string, unknown>) =>
+          Array.isArray(entry.hooks) &&
+          entry.hooks.some(
+            (h: Record<string, unknown>) => h.command === ".claude/hooks/wisegit-check.sh"
+          )
+      );
+
+      if (!alreadyExists) {
+        settings.hooks.PreToolUse.push(wisegitHookEntry);
+        writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+        settingsUpdated = true;
+      } else {
+        settingsSkipped = true;
+      }
+    } catch {
+      logger.warn("Could not parse .claude/settings.json — skipping hook merge");
+      settingsSkipped = true;
+    }
+  }
+
+  return { hookCreated, settingsUpdated, hookSkipped, settingsSkipped };
+}
 
 function safeToWrite(filePath: string): boolean {
   if (!existsSync(filePath)) return true;
@@ -155,6 +294,19 @@ export async function setupCommand(options: {
     console.log("  \u26a0 Skipped CLAUDE.md (path is a symlink)");
   }
 
+  // Write Claude Code PreToolUse hooks
+  const hookResult = writeClaudeHooks(repoPath);
+  if (hookResult.hookCreated) {
+    console.log("  \u2713 Created .claude/hooks/wisegit-check.sh");
+  } else if (hookResult.hookSkipped) {
+    console.log("  \u2713 .claude/hooks/wisegit-check.sh already exists — skipped");
+  }
+  if (hookResult.settingsUpdated) {
+    console.log("  \u2713 Updated .claude/settings.json (PreToolUse hook registered)");
+  } else if (hookResult.settingsSkipped) {
+    console.log("  \u2713 .claude/settings.json merged (PreToolUse hook already registered)");
+  }
+
   // Add .mcp.json to .gitignore (local paths — not shared)
   // Note: .wisegit/ is NOT gitignored — it's shared team knowledge
   const gitignorePath = resolve(repoPath, ".gitignore");
@@ -224,7 +376,8 @@ export async function setupCommand(options: {
   console.log("Setup complete! Claude Code will now:");
   console.log("  1. See wisegit MCP tools (via .mcp.json)");
   console.log("  2. Follow decision protection rules (via CLAUDE.md)");
-  console.log("  3. Call get_file_decisions before editing files");
+  console.log("  3. Block edits to FROZEN functions (via PreToolUse hook)");
+  console.log("  4. Call get_file_decisions before editing files");
   console.log(
     "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
   );
