@@ -308,17 +308,60 @@ concepts) predicts 65% of source code dependencies even without static analysis 
 critical for hybrid/legacy systems. gitwise captures both via branch manifests,
 co-change signals, and domain context from issue enrichment.
 
+#### Obsolescence Signals (8 total)
+
+Obsolescence signals detect functions that may no longer be relevant, counterbalancing
+protection signals to prevent over-freezing. Weights are **adaptive** — calibrated
+per-repository using entropy and Bayesian feedback rather than hardcoded values [13][15].
+
+| Signal | Default Weight | Detection | Academic Source |
+|---|---|---|---|
+| Dead code (zero callers) | -0.20 | Call graph analysis: no inbound edges | [13]: entropy-calibrated |
+| Stale subgraph (all callers dormant) | -0.15 | Transitive caller analysis: all callers inactive | [13] |
+| Migration leftover (`do_not_reintroduce` patterns) | -0.25 | Branch context: matches `do_not_reintroduce` list | [5][9] |
+| Obsolete dependency (imports removed package) | -0.15 | Import analysis: references package no longer in deps | [15] |
+| Superseded function (*V2, @deprecated) | -0.20 | Naming patterns: `*V2`, `*New`, `@deprecated` tag | [15] |
+| Self-admitted aging debt (SAAD) | -0.20 | Comment scanning: "TODO: remove", "legacy compat", "temporary until" | [16] |
+| Change burst absence | -0.15 | Was hot (high commit frequency), now silent while neighbors active | [14] |
+| Co-change divergence | -0.10 | Co-change partners active but this function is not | [17] |
+
+**Adaptive weight calibration** (replaces hardcoded weights when sufficient data exists):
+
+1. **Entropy calibration [13]:** Shannon entropy per signal measures discrimination
+   across the repo. Pearson correlation between signals detects redundancy.
+   Formula: `weight = entropy * (1 - avg_correlation)`, normalized with
+   floor/ceiling guards. Hardcoded weights become fallback when < 20 functions
+   have signals.
+
+2. **Bayesian updating:** Override on function with obsolescence penalty generates
+   FALSE_POSITIVE feedback. Function deletion with penalty generates TRUE_POSITIVE
+   feedback. Adjustments shift weights +/-50% max based on positive/negative ratio.
+
+3. **`wisegit calibrate` CLI:** Shows calibrated weights vs defaults, entropy,
+   correlations, Bayesian adjustments, and a confidence score based on data
+   quantity + feedback volume.
+
 **Combined formula:**
 ```
-freeze_score =
-  (git_signals         × 0.20)
-  + (issue_signals     × 0.20)
-  + (code_structure    × 0.15)
-  + (test_signals      × 0.15)
-  + (structural        × 0.15)
-  + (naur_theory       × 0.10)
-  + (aranda_signals    × 0.05)
+base_score =
+  (git_signals         x 0.20)
+  + (issue_signals     x 0.20)
+  + (code_structure    x 0.15)
+  + (test_signals      x 0.15)
+  + (structural        x 0.15)
+  + (naur_theory       x 0.10)
+  + (aranda_signals    x 0.05)
+
+obsolescence_penalty = sum(active_obsolescence_signals)
+  -- weights are entropy-calibrated + Bayesian-adjusted per repo [13][15]
+  -- falls back to hardcoded defaults when < 20 functions have signals
+
+freeze_score = base_score x (1 - obsolescence_penalty)
 ```
+
+Per Eick et al. [15]: code decay varies significantly across projects —
+fixed weights are inherently insufficient. The adaptive calibration system
+ensures obsolescence penalties reflect each repository's actual signal distribution.
 
 ---
 
@@ -671,6 +714,15 @@ gitwise init --full-history
 - [ ] Demo GIF (optional)
 - [ ] Optional: fine-tune Ollama on repo's own commit history [4]
 
+### Phase 6 — Adaptive Obsolescence Calibration
+- [x] 8 obsolescence signals: deadCode, staleSubgraph, migrationLeftover, obsoleteDependency, supersededFunction, selfAdmittedDebt, changeBurstAbsence, coChangeDivergence
+- [x] Entropy calibration: Shannon entropy per signal, Pearson correlation for redundancy detection [13]
+- [x] Bayesian updating: FALSE_POSITIVE (override) and TRUE_POSITIVE (deletion) feedback loops
+- [x] `wisegit calibrate` CLI command: calibrated vs default weights, entropy, correlations, confidence score
+- [x] Adaptive formula: `freeze_score = base_score * (1 - obsolescence_penalty)` [15]
+- [x] Fallback to hardcoded weights when < 20 functions have signals
+- [x] Floor/ceiling guards on calibrated weights
+
 ### Bonus — MCP Enhancements (post-roadmap)
 - [x] `create_override` MCP tool — override frozen functions from Claude Code UI
 - [x] `get_function_history` MCP tool — full timeline for a function
@@ -700,6 +752,11 @@ gitwise is defensible at every layer:
 | Temporal + spatial locality are real and measurable | Kim et al. [8] |
 | Domain coupling predicts dependencies without source analysis | Aryani et al. [9] |
 | Legacy evolution requires preserving decisions, not just structure | Távora [12] |
+| Fixed weights insufficient — code decay varies per project | Eick et al. [15] |
+| Entropy-based calibration for metric aggregation | Springer [13] |
+| Change burst absence predicts defects | Herzig et al. [14] |
+| Self-admitted aging debt detectable from comments | SAAD research [16] |
+| Co-change divergence reveals behavioral drift | Tornhill/CodeScene [17] |
 
 ---
 
@@ -739,6 +796,8 @@ gitwise is defensible at every layer:
 | Legacy migration support [12] | ❌ | ❌ | ❌ | ✅ |
 | Team theory distribution tracking [2] | ❌ | ❌ | ❌ | ✅ |
 | AI vs human decision origin [2][11] | ❌ | ❌ | ❌ | ✅ |
+| Adaptive obsolescence calibration [13][15] | ❌ | ❌ | ❌ | ✅ |
+| Obsolescence signals (8 detectors) [14][16][17] | ❌ | ❌ | ❌ | ✅ |
 
 ---
 
@@ -819,3 +878,42 @@ gitwise is defensible at every layer:
     legacy coexistence, understanding AS-IS before defining TO-BE,
     preserving business decisions embedded in technically-poor code,
     blame-free approach to legacy evolution.
+
+[13] *Weighted Software Metrics Aggregation via Entropy-Based Calibration.*
+    Springer, 2021.
+    Source for: entropy-based weight calibration for software metric
+    aggregation. Shannon entropy per signal measures discrimination;
+    Pearson correlation detects redundancy. Formula:
+    weight = entropy * (1 - avg_correlation), normalized with floor/ceiling
+    guards. Theoretical foundation for adaptive obsolescence weights.
+
+[14] Kim Herzig, Sascha Just, Andreas Zeller (2010).
+    *Change Bursts as Defect Predictors.*
+    Source for: change burst absence signal — functions that were
+    historically hot (high commit frequency) but have gone silent while
+    neighboring code remains active. Absence of expected activity is itself
+    a signal of potential obsolescence or abandonment.
+
+[15] Stephen G. Eick, Todd L. Graves, Alan F. Karr, J.S. Marron,
+    Audris Mockus (2001). *Does Code Decay? Assessing the Evidence
+    from Change Management Data.*
+    IEEE Transactions on Software Engineering, 27(1), 1-12.
+    Source for: code decay varies significantly across projects —
+    fixed weights are inherently insufficient for obsolescence detection.
+    Motivates adaptive per-repository calibration over universal defaults.
+    Also informs the obsolete dependency and superseded function signals.
+
+[16] *Detection, Classification and Prevalence of Self-Admitted
+    Aging Debt.* 2025.
+    Source for: Self-Admitted Aging Debt (SAAD) scanner — detecting
+    comments like "TODO: remove", "legacy compat", "temporary until"
+    as indicators of code the authors themselves considered temporary
+    or obsolescent. Distinct from general technical debt: SAAD
+    specifically targets aging and obsolescence markers.
+
+[17] Adam Tornhill / CodeScene. *Behavioral Code Analysis.*
+    Source for: co-change divergence signal — when a function's
+    historical co-change partners are actively modified but the function
+    itself is not, it suggests behavioral drift. The function may have
+    been decoupled or superseded without explicit removal. Informs
+    the co-change divergence obsolescence detector.

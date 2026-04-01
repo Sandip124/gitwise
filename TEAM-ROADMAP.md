@@ -18,7 +18,7 @@ The `.wisegit/` directory — tracked by git — stores shared team knowledge: e
 | AST parsing (Tree-sitter) | Done | 6 languages: C#, TypeScript, JavaScript, Python, Go, Rust |
 | Commit classification | Done | STRUCTURED / DESCRIPTIVE / NOISE |
 | Intent extraction | Done | Rule-based + MCP sampling (host LLM) + Ollama fallback |
-| Freeze score (7 signal categories) | Done | Git signals, issue enrichment, code structure, test, structural, Naur, Aranda |
+| Freeze score (8 signal categories) | Done | Git signals, issue enrichment, code structure, test, structural, Naur, Aranda, obsolescence (8 signals) |
 | Call graph + PageRank | Done | Structural importance via graphology |
 | Theory gap detection | Done | Naur death, timeline discontinuities, forgotten patterns |
 | Co-change signals | Done | Ying et al. [5] + Aryani et al. [9] |
@@ -28,8 +28,9 @@ The `.wisegit/` directory — tracked by git — stores shared team knowledge: e
 | Team shared layer (.wisegit/) | Done | JSONL files tracked by git, auto-sync on MCP calls |
 | Theory holder tracking | Done | Per-function active/inactive contributors, risk levels |
 | AI commit origin detection | Done | HUMAN / AI_REVIEWED / AI_UNREVIEWED with score modifiers |
+| Adaptive obsolescence calibration | Done | 8 obsolescence signals, entropy-calibrated weights, Bayesian feedback, `wisegit calibrate` |
 | MCP server | Done | 8 tools + 1 resource template + 1 prompt |
-| CLI | Done | 18 commands |
+| CLI | Done | 20 commands |
 
 ---
 
@@ -189,6 +190,17 @@ wisegit is designed for codebases that have accumulated years of intentional dec
 | Magic number / non-obvious value | +0.15 | Tuned constants from production experience. [6] |
 | Branch `do_not_reintroduce` list | +0.35 | Pattern deliberately removed in migration. |
 
+**Obsolescence counterbalance signals** (adaptive weights, calibrated per-repo [13][15]):
+
+| Signal | Default Weight | Why it matters for legacy |
+|--------|----------------|--------------------------|
+| Dead code (zero callers) | -0.20 | Orphaned functions after migration. Should not remain frozen. |
+| Stale subgraph (all callers dormant) | -0.15 | Entire call chain inactive — legacy subsystem fully replaced. |
+| Migration leftover (`do_not_reintroduce`) | -0.25 | Matches branch context removal list — confirmed obsolete. |
+| Self-admitted aging debt (SAAD) | -0.20 | Authors marked it temporary: "TODO: remove", "legacy compat" [16]. |
+| Change burst absence | -0.15 | Was hot, now silent while neighbors active — abandoned fix [14]. |
+| Co-change divergence | -0.10 | Partners evolved without it — behavioral drift [17]. |
+
 ### The Blame-Free Approach
 
 The freeze score carries no judgment about code quality — it measures **intentionality and risk**. The override system requires a reason but never blocks: wisegit's job is to inform, not to prevent. The append-only log ensures future team members can trace the full decision history.
@@ -213,6 +225,7 @@ The freeze score carries no judgment about code quality — it measures **intent
 | **B: Team-Aware Manifests** | Done | Theory holders per function, risk levels, `team-status`, `team-health` |
 | **C: AI-Era Adaptations** | Done | Commit origin detection, origin-weighted freeze scores |
 | **D: Advanced Team Features** | Done | Override approval (approved_by field), team health metrics |
+| **E: Adaptive Obsolescence** | Done | 8 obsolescence signals, entropy calibration, Bayesian feedback, `wisegit calibrate` CLI |
 
 ---
 
@@ -230,5 +243,10 @@ The freeze score carries no judgment about code quality — it measures **intent
 [10] Silvia Abrahão et al. (2025). *Software Engineering by and for Humans in an AI Era.*
 [11] Nitin Addla (2026). *AI-Driven Development Lifecycle (AI-DLC).*
 [12] João Victor Dias Távora (2025). *Legacy System Reengineering and Refactoring.*
+[13] *Weighted Software Metrics Aggregation via Entropy-Based Calibration.* Springer, 2021.
+[14] Kim Herzig, Sascha Just, Andreas Zeller (2010). *Change Bursts as Defect Predictors.*
+[15] Stephen G. Eick et al. (2001). *Does Code Decay? Assessing the Evidence from Change Management Data.*
+[16] *Detection, Classification and Prevalence of Self-Admitted Aging Debt.* 2025.
+[17] Adam Tornhill / CodeScene. *Behavioral Code Analysis — Co-Change Divergence.*
 
 See [REFERENCE.md](REFERENCE.md) for full citations.

@@ -48,7 +48,7 @@ Git History → Tree-sitter AST → Intent Extraction → SQLite Event Store →
 1. **Indexes your git history** — walks every commit, parses diffs at the AST level (function boundaries, not line counts)
 2. **Classifies commits** — STRUCTURED (`fix:`, `feat:`), DESCRIPTIVE (plain sentences), or NOISE (`wip`, `x`)
 3. **Extracts intent** — rule-based for structured/descriptive commits, LLM for noise (Phase 2)
-4. **Computes freeze scores** — 0–1 per function, derived from git signals, contributor count, age, reverts, and more
+4. **Computes freeze scores** — 0–1 per function, derived from protection signals (git, issue, code structure, test, structural, Naur, Aranda) minus adaptive obsolescence penalty (8 signals, entropy-calibrated)
 5. **Serves decision manifests via MCP** — Claude Code calls `get_file_decisions` before editing any file
 
 ## What the AI Sees
@@ -157,6 +157,7 @@ wisegit team-health                              # Theory health: healthy/fragil
 wisegit branch-capture                           # Capture branch context from last merge
 wisegit branch-list                              # List all captured branch snapshots
 wisegit branch-recover <sha>                     # Recover context from old merge commit
+wisegit calibrate                                # Show adaptive obsolescence weights vs defaults
 wisegit serve                                    # Start MCP server (stdio)
 wisegit hook install|uninstall                   # Manage git hooks (post-commit + post-merge)
 ```
@@ -238,8 +239,17 @@ The freeze score is **never stored directly** — it's derived by replaying the 
 | Structural Importance | 0.15 | Call count (PageRank), public API, author activity |
 | Naur Theory | 0.10 | Global patterns, intentional contradictions, removal cost |
 | Aranda Signals | 0.05 | Forgotten patterns, timeline gaps, broken issue links |
+| Obsolescence (8 signals) | adaptive | Dead code, stale subgraph, migration leftover, obsolete deps, superseded, SAAD, change burst absence, co-change divergence |
 
-Academic grounding: 12 published papers. See [REFERENCE.md](REFERENCE.md) for full citations.
+**Freeze score formula:**
+```
+freeze_score = base_score x (1 - obsolescence_penalty)
+```
+Protection signals produce the base score; obsolescence signals produce the penalty.
+Obsolescence weights are **adaptive** — calibrated per-repository using Shannon entropy
+and Bayesian feedback. Falls back to hardcoded defaults when < 20 functions have signals.
+
+Academic grounding: 17 published papers. See [REFERENCE.md](REFERENCE.md) for full citations.
 
 ## Legacy Codebase Evolution
 
@@ -255,7 +265,7 @@ wisegit is designed for codebases that have accumulated years of intentional dec
 | **Preserve migration context** | Branch snapshots record what was replaced and what should never return |
 | **Track cross-boundary deps** | Co-change signals detect coupling between legacy and replacement code |
 
-See [REFERENCE.md](REFERENCE.md) for the full legacy evolution section with academic grounding (12 published papers).
+See [REFERENCE.md](REFERENCE.md) for the full legacy evolution section with academic grounding (17 published papers).
 
 ## Team Support
 
@@ -349,6 +359,7 @@ See [TEAM-ROADMAP.md](TEAM-ROADMAP.md) for the full team architecture design.
 - [x] **Phase B** — Team-aware manifests: theory holder tracking, risk levels (healthy/fragile/critical), team status + health commands
 - [x] **Phase C** — AI-era adaptations: commit origin detection (HUMAN/AI_REVIEWED/AI_UNREVIEWED), origin-weighted freeze scores
 - [x] **Phase D** — Override approval workflow, team health metrics
+- [x] **Phase E** — Adaptive obsolescence calibration: 8 obsolescence signals, entropy-calibrated weights, Bayesian feedback, `wisegit calibrate` CLI
 
 ## License
 
