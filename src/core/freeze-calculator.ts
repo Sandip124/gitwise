@@ -4,6 +4,7 @@ import {
   FreezeScore,
   SignalBreakdown,
   IntentConfidence,
+  ObsolescenceBreakdown,
 } from "./types.js";
 import { CATEGORY_WEIGHTS, GIT_SIGNALS } from "./signal-weights.js";
 import { getRecoveryLevel } from "./recovery-levels.js";
@@ -19,6 +20,8 @@ export interface FreezeScoreContext {
   naurScore?: number;
   arandaScore?: number;
   repoPath?: string; // For AI origin detection
+  obsolescence?: ObsolescenceBreakdown; // Reduces score for dead/obsolete code
+  branch?: string; // Branch this score is computed for
 }
 
 /**
@@ -63,7 +66,7 @@ export function calculateFreezeScore(
     arandaSignals: arandaScore,
   };
 
-  const score = clamp(
+  const baseScore = clamp(
     breakdown.gitSignals * CATEGORY_WEIGHTS.gitSignals +
       breakdown.issueSignals * CATEGORY_WEIGHTS.issueSignals +
       breakdown.codeStructure * CATEGORY_WEIGHTS.codeStructure +
@@ -75,15 +78,24 @@ export function calculateFreezeScore(
     1
   );
 
+  // Apply obsolescence penalty: final = base × (1 - penalty)
+  // A penalty of 0.7 means the function retains 30% of its base score
+  const obsolescence = ctx?.obsolescence;
+  const penalty = obsolescence?.penalty ?? 0;
+  const score = clamp(baseScore * (1 - penalty), 0, 1);
+
   return {
     functionId,
     filePath,
     functionName,
     score,
+    baseScore: penalty > 0 ? baseScore : undefined,
     recoveryLevel: getRecoveryLevel(score),
     signalBreakdown: breakdown,
+    obsolescence: penalty > 0 ? obsolescence : undefined,
     theoryGap: ctx?.theoryGap ?? false,
     pagerank: pagerankVal,
+    branch: ctx?.branch,
   };
 }
 
