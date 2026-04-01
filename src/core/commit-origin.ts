@@ -74,7 +74,20 @@ function loadTeamConfig(repoPath: string): TeamConfig {
     const paths = getWisegitPaths(repoPath);
     if (existsSync(paths.config)) {
       const raw = JSON.parse(readFileSync(paths.config, "utf-8"));
-      return { ...DEFAULT_TEAM_CONFIG, ...raw };
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        return { ...DEFAULT_TEAM_CONFIG };
+      }
+      // Allowlist: only pick known TeamConfig keys to prevent prototype pollution
+      return {
+        ...DEFAULT_TEAM_CONFIG,
+        ...(typeof raw.version === "number" ? { version: raw.version } : {}),
+        ...(typeof raw.team_name === "string" ? { team_name: raw.team_name } : {}),
+        ...(typeof raw.enrichment_staleness_days === "number" ? { enrichment_staleness_days: raw.enrichment_staleness_days } : {}),
+        ...(typeof raw.override_requires_approval === "boolean" ? { override_requires_approval: raw.override_requires_approval } : {}),
+        ...(typeof raw.override_default_expiry_days === "number" ? { override_default_expiry_days: raw.override_default_expiry_days } : {}),
+        ...(Array.isArray(raw.ignore_paths) ? { ignore_paths: raw.ignore_paths.filter((p: unknown) => typeof p === "string") } : {}),
+        ...(Array.isArray(raw.ai_commit_authors) ? { ai_commit_authors: raw.ai_commit_authors.filter((a: unknown) => typeof a === "string") } : {}),
+      };
     }
   } catch {
     // fallback

@@ -6,11 +6,15 @@ dist/
 coverage/
 *.tsbuildinfo
 
-# Auth tokens — NEVER commit
+# Auth tokens and secrets — NEVER commit
 .mcpregistry_*
 .mcp_publisher_token
 .npmrc
 *.token
+*.key
+*.pem
+*.p12
+*.pfx
 
 # Per-developer MCP config (contains local paths)
 .mcp.json

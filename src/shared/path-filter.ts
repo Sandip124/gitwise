@@ -8,8 +8,11 @@ export function loadIgnorePaths(repoPath: string): string[] {
   try {
     const paths = getWisegitPaths(repoPath);
     if (existsSync(paths.config)) {
-      const config = JSON.parse(readFileSync(paths.config, "utf-8")) as TeamConfig;
-      return config.ignore_paths ?? DEFAULT_TEAM_CONFIG.ignore_paths;
+      const raw = JSON.parse(readFileSync(paths.config, "utf-8"));
+      if (typeof raw === "object" && raw !== null && Array.isArray(raw.ignore_paths)) {
+        const validated = raw.ignore_paths.filter((p: unknown) => typeof p === "string");
+        return validated.length > 0 ? validated : DEFAULT_TEAM_CONFIG.ignore_paths;
+      }
     }
   } catch {
     // fallback

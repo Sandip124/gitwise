@@ -106,9 +106,10 @@ export class GitHubClient {
         reviewComments: 0,
       };
     } catch (err) {
-      logger.warn(
-        `Failed to fetch GitHub issue #${number}: ${err instanceof Error ? err.message : String(err)}`
-      );
+      const errMsg = (err instanceof Error ? err.message : String(err))
+        .replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]")
+        .replace(/token\s+\S+/gi, "token [REDACTED]");
+      logger.warn(`Failed to fetch GitHub issue #${number}: ${errMsg}`);
       return null;
     }
   }

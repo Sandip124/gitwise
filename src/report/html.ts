@@ -291,7 +291,7 @@ ${SCRIPT}
 </body></html>`;
 }
 
-function esc(s: string): string { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+function esc(s: string): string { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
 /** Escape JSON for safe embedding in <script> — prevents </script> injection (XSS) */
 function safeJson(obj: unknown): string { return JSON.stringify(obj).replace(/</g, "\\u003c").replace(/>/g, "\\u003e"); }
 function fmt(n: number): string { return n.toLocaleString(); }

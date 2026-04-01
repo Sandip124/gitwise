@@ -128,7 +128,7 @@ export function collectReportData(
   );
 
   // Freeze score distribution (filtered by ignore_paths)
-  const allScores = db.prepare(`SELECT score, file_path FROM freeze_scores WHERE repo_path = ?`).all(repoPath) as { score: number; file_path: string }[];
+  const allScores = db.prepare(`SELECT score, file_path FROM freeze_scores WHERE repo_path = ? LIMIT 50000`).all(repoPath) as { score: number; file_path: string }[];
   const scores = allScores.filter(s => !isIgnored(s.file_path));
   const freezeDistribution = { frozen: 0, stable: 0, open: 0 };
   for (const { score } of scores) {
@@ -307,7 +307,7 @@ export function collectReportData(
     db.prepare(`
       SELECT function_name, file_path, score, theory_gap, pagerank
       FROM freeze_scores WHERE repo_path = ?
-      ORDER BY score DESC
+      ORDER BY score DESC LIMIT 5000
     `).all(repoPath) as { function_name: string; file_path: string; score: number; theory_gap: number; pagerank: number }[]
   ).filter(r => !isIgnored(r.file_path)).map(r => ({
     name: r.function_name,

@@ -74,9 +74,10 @@ export class GitLabClient {
         comments,
       };
     } catch (err) {
-      logger.warn(
-        `Failed to fetch GitLab issue #${number}: ${err instanceof Error ? err.message : String(err)}`
-      );
+      const errMsg = (err instanceof Error ? err.message : String(err))
+        .replace(/PRIVATE-TOKEN[:\s]+\S+/gi, "PRIVATE-TOKEN [REDACTED]")
+        .replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]");
+      logger.warn(`Failed to fetch GitLab issue #${number}: ${errMsg}`);
       return null;
     }
   }

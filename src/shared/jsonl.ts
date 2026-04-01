@@ -16,9 +16,13 @@ import { dirname } from "node:path";
  */
 
 /**
- * Read all entries from a JSONL file.
+ * Read all entries from a JSONL file with optional schema validation.
+ * Skips malformed lines and entries that fail validation.
  */
-export function readJsonl<T>(filePath: string): T[] {
+export function readJsonl<T>(
+  filePath: string,
+  validator?: (entry: unknown) => entry is T
+): T[] {
   if (!existsSync(filePath)) return [];
 
   const content = readFileSync(filePath, "utf-8");
@@ -27,8 +31,17 @@ export function readJsonl<T>(filePath: string): T[] {
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
+    // Skip git merge conflict markers
+    if (trimmed.startsWith("<<<<") || trimmed.startsWith(">>>>") || trimmed.startsWith("====")) continue;
     try {
-      results.push(JSON.parse(trimmed) as T);
+      const parsed = JSON.parse(trimmed);
+      // Reject non-objects (prevents primitive injection)
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) continue;
+      if (validator) {
+        if (validator(parsed)) results.push(parsed);
+      } else {
+        results.push(parsed as T);
+      }
     } catch {
       // Skip malformed lines
     }

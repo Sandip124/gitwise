@@ -14,7 +14,9 @@ export class DatabaseError extends GitwiseError {
 
 export class NotAGitRepoError extends GitwiseError {
   constructor(path: string) {
-    super(`Not a git repository: ${path}`, "NOT_GIT_REPO");
+    // Only include the basename to avoid leaking full directory structure
+    const safePath = path.split("/").pop() ?? "unknown";
+    super(`Not a git repository: ${safePath}`, "NOT_GIT_REPO");
     this.name = "NotAGitRepoError";
   }
 }

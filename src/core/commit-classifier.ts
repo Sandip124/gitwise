@@ -61,6 +61,11 @@ export function classifyCommit(message: string): CommitClassification {
     return CommitClassification.NOISE;
   }
 
+  // Extremely long messages = NOISE (prevents ReDoS on pathological input)
+  if (firstLine.length > 1000) {
+    return CommitClassification.NOISE;
+  }
+
   // Merge commits = NOISE (auto-generated, no human decision signal)
   if (MERGE_PATTERN.test(firstLine)) {
     return CommitClassification.NOISE;
