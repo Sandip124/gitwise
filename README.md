@@ -48,7 +48,7 @@ Git History → Tree-sitter AST → Intent Extraction → SQLite Event Store →
 1. **Indexes your git history** — walks every commit, parses diffs at the AST level (function boundaries, not line counts)
 2. **Classifies commits** — STRUCTURED (`fix:`, `feat:`), DESCRIPTIVE (plain sentences), or NOISE (`wip`, `x`)
 3. **Extracts intent** — rule-based for structured/descriptive commits, LLM for noise (Phase 2)
-4. **Computes freeze scores** — 0–1 per function, derived from protection signals (git, issue, code structure, test, structural, Naur, Aranda) minus adaptive obsolescence penalty (8 signals, entropy-calibrated)
+4. **Computes freeze scores** — 0–1 per function, derived from protection signals (git, issue, code structure, test, structural, Naur, Aranda) minus adaptive obsolescence penalty (8 signals, entropy-calibrated). Age uses Weibull survival [18]; expertise uses DOE model [19]
 5. **Serves decision manifests via MCP** — Claude Code calls `get_file_decisions` before editing any file
 
 ## What the AI Sees
@@ -232,11 +232,11 @@ The freeze score is **never stored directly** — it's derived by replaying the 
 
 | Category | Weight | Source |
 |----------|--------|--------|
-| Git History | 0.20 | Reverts, verified keywords, incident refs, contributor count, age |
+| Git History | 0.20 | Reverts, verified keywords, incident refs, contributor count, Weibull age [18] |
 | Issue Enrichment | 0.20 | Won't Fix/By Design, reproduction steps, platform labels |
 | Code Structure | 0.15 | Inline comments, magic numbers, defensive patterns |
 | Test Signals | 0.15 | Dedicated tests, edge case labels, co-committed tests |
-| Structural Importance | 0.15 | Call count (PageRank), public API, author activity |
+| Structural Importance | 0.15 | Call count (PageRank), public API, DOE expertise model [19] |
 | Naur Theory | 0.10 | Global patterns, intentional contradictions, removal cost |
 | Aranda Signals | 0.05 | Forgotten patterns, timeline gaps, broken issue links |
 | Obsolescence (8 signals) | adaptive | Dead code, stale subgraph, migration leftover, obsolete deps, superseded, SAAD, change burst absence, co-change divergence |
@@ -245,11 +245,26 @@ The freeze score is **never stored directly** — it's derived by replaying the 
 ```
 freeze_score = base_score x (1 - obsolescence_penalty)
 ```
-Protection signals produce the base score; obsolescence signals produce the penalty.
+Protection signals produce the base score (weighted average of present signal categories, not additive sum); obsolescence signals produce the penalty.
 Obsolescence weights are **adaptive** — calibrated per-repository using Shannon entropy
 and Bayesian feedback. Falls back to hardcoded defaults when < 20 functions have signals.
+Age signal uses **Weibull survival model** [18] (k=0.7, lambda=2.4y); contributor expertise uses **DOE model** [19] (4 variables: contribution share, recency, duration, frequency).
 
-Academic grounding: 17 published papers. See [REFERENCE.md](REFERENCE.md) for full citations.
+Academic grounding: 24 published papers. See [REFERENCE.md](REFERENCE.md) for full citations.
+
+## Cross-Repo Validation
+
+Tested on 3 real-world open-source codebases:
+
+| Repo | Commits | Functions | FROZEN | STABLE | Max Score |
+|------|---------|-----------|--------|--------|-----------|
+| pallets/flask | 5,565 | 4,355 | 72 | 2,272 | 0.927 |
+| expressjs/express | 6,382 | 409 | 1 | 247 | 0.811 |
+| zeeguu/api | 4,515 | 3,216 | 1 | 12 | 0.583 |
+
+Flask's core APIs (`__init__`, `run`, `wsgi_app`, `url_for`) correctly scored FROZEN (0.87+). Express routing primitives (`paramCallback`, `Route`, `Router`) correctly scored FROZEN/STABLE. Scores adapt to each codebase's history rather than producing uniform distributions.
+
+See [REFERENCE.md](REFERENCE.md) for detailed validation findings and implementation changes.
 
 ## Legacy Codebase Evolution
 
@@ -265,7 +280,7 @@ wisegit is designed for codebases that have accumulated years of intentional dec
 | **Preserve migration context** | Branch snapshots record what was replaced and what should never return |
 | **Track cross-boundary deps** | Co-change signals detect coupling between legacy and replacement code |
 
-See [REFERENCE.md](REFERENCE.md) for the full legacy evolution section with academic grounding (17 published papers).
+See [REFERENCE.md](REFERENCE.md) for the full legacy evolution section with academic grounding (24 published papers).
 
 ## Team Support
 

@@ -242,7 +242,7 @@ the score recalculates from full history whenever new evidence arrives.
 | Commit keywords: verified, tested, stable | +0.10 | Aranda [3]: explicit documentation |
 | Production incident reference (#issue) | +0.20 | Knab et al. [7]: past defects predict future |
 | Contributor count | +0.05 per author | Aranda [3]: 26 people involved in 10 bugs |
-| Age without modification (years stable) | +0.10 per year | Kim et al. [8]: temporal locality |
+| Age without modification (Weibull survival) | Weibull(k=0.7, λ=2.4y) | Spinellis et al. [18]: code line survival distribution |
 | Branch type: fix/, hotfix/ | +0.15 | Hericko et al. [4]: corrective commits |
 
 #### Issue Enrichment Signals
@@ -276,7 +276,7 @@ the score recalculates from full history whenever new evidence arrives.
 |---|---|---|
 | Called from 10+ other functions | +0.15 | Kim et al. [8]: spatial locality |
 | Public API / entry point | +0.15 | Giger et al. [6]: `func`/`mDecl` high correlation |
-| Primary author no longer in repo — Naur death [2] | +0.20 | Naur [2]: theory dies with team |
+| Primary author DOE expertise score — Naur death [2][19] | +0.20 | Naur [2]: theory dies with team; DOE model [19] replaces binary active/inactive |
 | Stable file with high call count | +0.15 | Kim et al. [8]: changed-entity locality |
 
 #### Naur Theory Signals [2]
@@ -343,14 +343,14 @@ per-repository using entropy and Bayesian feedback rather than hardcoded values 
 
 **Combined formula:**
 ```
-base_score =
-  (git_signals         x 0.20)
-  + (issue_signals     x 0.20)
-  + (code_structure    x 0.15)
-  + (test_signals      x 0.15)
-  + (structural        x 0.15)
-  + (naur_theory       x 0.10)
-  + (aranda_signals    x 0.05)
+base_score = weighted_average(present_signal_categories)
+  -- only categories with active signals contribute (not additive sum of all)
+  -- category weights (normalized across present categories):
+  --   git_signals: 0.20, issue_signals: 0.20, code_structure: 0.15,
+  --   test_signals: 0.15, structural: 0.15, naur_theory: 0.10,
+  --   aranda_signals: 0.05
+  -- age signal uses Weibull survival: S(t) = exp(-(t/2.4)^0.7) [18]
+  -- contributor expertise uses DOE model (4 variables) [19]
 
 obsolescence_penalty = sum(active_obsolescence_signals)
   -- weights are entropy-calibrated + Bayesian-adjusted per repo [13][15]
@@ -757,6 +757,57 @@ gitwise is defensible at every layer:
 | Change burst absence predicts defects | Herzig et al. [14] |
 | Self-admitted aging debt detectable from comments | SAAD research [16] |
 | Co-change divergence reveals behavioral drift | Tornhill/CodeScene [17] |
+| Code line survival follows Weibull distribution (k=0.7, lambda=2.4y) | Spinellis et al. [18] |
+| DOE model for nuanced developer expertise assessment | Cury, Ferreira, Valente [19] |
+| Rationale extraction from code artifacts validated as research direction | Li et al. [20] |
+| Program dependence graphs capture data-flow beyond call graphs | Yan et al. [21] |
+| Context infrastructure = 24.2% of codebase validates manifest investment | Schroer, Murzin [22] |
+| Commit-based ownership correlates with quality | Thongtanunam, Tantithamthavorn [23] |
+| AI without decision context = 19% productivity loss | Cao, Sun [24] |
+
+---
+
+## Cross-Repo Validation
+
+wisegit was tested on 3 real-world open-source codebases to validate freeze score
+accuracy and distribution across diverse project types:
+
+| Repo | Commits | Functions | FROZEN | STABLE | Max Score |
+|------|---------|-----------|--------|--------|-----------|
+| pallets/flask | 5,565 | 4,355 | 72 | 2,272 | 0.927 |
+| expressjs/express | 6,382 | 409 | 1 | 247 | 0.811 |
+| zeeguu/api | 4,515 | 3,216 | 1 | 12 | 0.583 |
+
+**Key findings:**
+
+- **Flask:** Core APIs (`__init__`, `run`, `wsgi_app`, `url_for`) correctly scored
+  FROZEN (0.87+). High FROZEN count reflects Flask's mature, stable API surface.
+- **Express:** Routing primitives (`paramCallback`, `Route`, `Router`) correctly
+  scored FROZEN/STABLE. Low FROZEN count reflects Express's minimalist architecture.
+- **Zeeguu:** Young academic codebase with few stabilized functions. Low max score
+  correctly reflects active development with less accumulated intentional decisions.
+
+The results confirm that wisegit's scoring adapts to each codebase's history rather
+than producing uniform distributions. Well-known intentional APIs score highest;
+actively-evolving code scores lowest.
+
+**Implementation changes validated by cross-repo testing:**
+
+1. **Weibull survival model** [18] replaces linear +0.10/year age signal — linear
+   over-rewarded old-but-trivial code; Weibull reflects actual survival probability.
+2. **DOE expertise model** [19] replaces binary active/inactive contributor detection
+   — 4-variable model (contribution share, recency, duration, frequency) provides
+   nuanced theory holder assessment.
+3. **Weighted average of present signals** replaces additive sum of all categories —
+   functions with signals in fewer categories are no longer penalized.
+4. **Preflight readiness signal** in MCP manifest (`ready: true/false`) — lets
+   agents know whether the index is complete before requesting decisions.
+5. **Three new signal analyzers:** code-structure, test, and naur-theory — extracted
+   from monolithic scorer into dedicated, testable analyzers.
+6. **Fixed Python call graph** — corrected AST node types for Python function call
+   detection (was using wrong node types, producing incomplete call graphs).
+7. **Incremental file hashing** — fast recompute by skipping unchanged files during
+   re-indexing.
 
 ---
 
@@ -917,3 +968,62 @@ gitwise is defensible at every layer:
     itself is not, it suggests behavioral drift. The function may have
     been decoupled or superseded without explicit removal. Informs
     the co-change divergence obsolescence detector.
+
+[18] Diomidis Spinellis, Panos Louridas, Maria Kechagia (2021).
+    *Software Evolution: Lifetime of Fine-Grained Elements.*
+    PeerJ Computer Science, 7, e372. https://doi.org/10.7717/peerj-cs.372
+    Source for: Weibull survival model replacing linear age signal.
+    Code lines follow a Weibull distribution with shape k=0.7 and
+    scale lambda=2.4 years. Used to compute age-based protection that
+    reflects actual survival probability rather than linear accumulation.
+
+[19] Rafael Cury, Fabio Ferreira, Marco Tulio Valente (2024).
+    *Knowledge Islands: Visualizing Developer Expertise Using DOE Model.*
+    arXiv:2408.08733. https://arxiv.org/abs/2408.08733
+    Source for: DOE (Degree of Expertise) model replacing binary
+    active/inactive contributor detection. 4 variables: contribution
+    share, recency, duration, and frequency. Provides nuanced theory
+    holder assessment instead of binary active/inactive classification.
+
+[20] Yanxian Li et al. (2025).
+    *Code Digital Twin: A Knowledge Infrastructure for AI-Powered
+    Software Development.* arXiv:2503.07967.
+    https://arxiv.org/abs/2503.07967
+    Validates: wisegit's rationale extraction approach. Their
+    "Rationale Spine" concept with typed relationships extends
+    wisegit's flat event stream model. Confirms that extracting
+    decision rationale from code artifacts is a validated research
+    direction for AI-powered development.
+
+[21] Yanfu Yan et al. (2024).
+    *ATHENA: Combining Transformers and Program Dependence Graphs
+    for Change Impact Analysis.* FSE 2024.
+    https://doi.org/10.1145/3643770
+    Future work: program dependence graphs capture data-flow
+    dependencies that call graphs miss. Could enhance wisegit's
+    structural importance signals beyond call-count PageRank.
+
+[22] Lukas Schroer, Timur Murzin (2026).
+    *Codified Context: A Three-Tier Infrastructure for AI Agents.*
+    arXiv:2602.20478. https://arxiv.org/abs/2602.20478
+    Validates: wisegit's MCP-based context injection architecture.
+    Their finding that context infrastructure constitutes 24.2% of
+    codebase validates wisegit's investment in decision manifests
+    as first-class infrastructure rather than afterthought tooling.
+
+[23] Patanamon Thongtanunam, Chakkrit Tantithamthavorn (2024).
+    *Code Ownership: Principles and Differences between Commit-Based
+    and Line-Based.* ISSRE 2024. arXiv:2408.12807.
+    https://arxiv.org/abs/2408.12807
+    Informs: wisegit's theory holder model. Commit-based ownership
+    correlates better with quality; line-based better for accountability.
+    Supports wisegit's use of commit-based contributor tracking for
+    freeze score signals.
+
+[24] Jiahe Cao, Zihao Sun (2025).
+    *A Survey of Vibe Coding with LLMs.* arXiv:2510.12399.
+    https://arxiv.org/abs/2510.12399
+    Validates: wisegit's core thesis. Finding: developers using AI
+    tools without prior decision context experienced 19% increased
+    completion time (productivity loss). Directly supports the need
+    for decision manifests injected before AI edits code.

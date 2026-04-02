@@ -26,7 +26,7 @@ The `.wisegit/` directory — tracked by git — stores shared team knowledge: e
 | Override system | Done | Mandatory reason, time-boxed expiry, MCP create_override tool |
 | Branch context preservation | Done | Post-merge hook, snapshot storage, recovery |
 | Team shared layer (.wisegit/) | Done | JSONL files tracked by git, auto-sync on MCP calls |
-| Theory holder tracking | Done | Per-function active/inactive contributors, risk levels |
+| Theory holder tracking | Done | Per-function DOE expertise model [19], risk levels |
 | AI commit origin detection | Done | HUMAN / AI_REVIEWED / AI_UNREVIEWED with score modifiers |
 | Adaptive obsolescence calibration | Done | 8 obsolescence signals, entropy-calibrated weights, Bayesian feedback, `wisegit calibrate` |
 | MCP server | Done | 8 tools + 1 resource template + 1 prompt |
@@ -248,5 +248,13 @@ The freeze score carries no judgment about code quality — it measures **intent
 [15] Stephen G. Eick et al. (2001). *Does Code Decay? Assessing the Evidence from Change Management Data.*
 [16] *Detection, Classification and Prevalence of Self-Admitted Aging Debt.* 2025.
 [17] Adam Tornhill / CodeScene. *Behavioral Code Analysis — Co-Change Divergence.*
+
+[18] Diomidis Spinellis, Panos Louridas, Maria Kechagia (2021). *Software Evolution: Lifetime of Fine-Grained Elements.* PeerJ Computer Science, 7, e372. DOI: 10.7717/peerj-cs.372
+[19] Rafael Cury, Fabio Ferreira, Marco Tulio Valente (2024). *Knowledge Islands: Visualizing Developer Expertise Using DOE Model.* arXiv:2408.08733
+[20] Yanxian Li et al. (2025). *Code Digital Twin: A Knowledge Infrastructure for AI-Powered Software Development.* arXiv:2503.07967
+[21] Yanfu Yan et al. (2024). *ATHENA: Combining Transformers and Program Dependence Graphs for Change Impact Analysis.* FSE 2024. DOI: 10.1145/3643770
+[22] Lukas Schroer, Timur Murzin (2026). *Codified Context: A Three-Tier Infrastructure for AI Agents.* arXiv:2602.20478
+[23] Patanamon Thongtanunam, Chakkrit Tantithamthavorn (2024). *Code Ownership: Principles and Differences between Commit-Based and Line-Based.* ISSRE 2024. arXiv:2408.12807
+[24] Jiahe Cao, Zihao Sun (2025). *A Survey of Vibe Coding with LLMs.* arXiv:2510.12399
 
 See [REFERENCE.md](REFERENCE.md) for full citations.
