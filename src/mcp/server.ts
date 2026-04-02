@@ -9,6 +9,10 @@ import { getFunctionHistory } from "./tools/get-function-history.js";
 import { getTheoryGaps } from "./tools/get-theory-gaps.js";
 import { getBranchContext } from "./tools/get-branch-context.js";
 import { extractIntentForFunction } from "./tools/extract-intent.js";
+import { findSimilarFunctions } from "./tools/find-similar-functions.js";
+import { predictImpact } from "./tools/predict-impact.js";
+import { getCodebaseConventions } from "./tools/get-codebase-conventions.js";
+import { buildCallGraph } from "../graph/builder.js";
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { syncSharedLayer } from "../pipeline/sync-pipeline.js";
 import { logger } from "../shared/logger.js";
@@ -321,6 +325,70 @@ export function createMcpServer(db: Database.Database): McpServer {
           content: [{ type: "text" as const, text: sanitizeError(err) }],
           isError: true,
         };
+      }
+    }
+  );
+
+  // ── find_similar_functions ──
+  server.tool(
+    "find_similar_functions",
+    "Search for existing functions that solve a similar problem. " +
+      "Use BEFORE writing new code to check if the functionality already exists. " +
+      "Prevents duplicating implementations that are already in the codebase.",
+    {
+      description: z.string().min(3).max(500).describe("What the function should do"),
+      repo_path: safeRepoPath,
+    },
+    async ({ description, repo_path }) => {
+      try {
+        const result = findSimilarFunctions(db, description, repo_path ?? "");
+        return { content: [{ type: "text" as const, text: result.formatted }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: sanitizeError(err) }], isError: true };
+      }
+    }
+  );
+
+  // ── predict_impact ──
+  let cachedGraph: import("graphology").DirectedGraph | null = null;
+  server.tool(
+    "predict_impact",
+    "Predict what functions will break if a given function is modified. " +
+      "Shows direct callers, transitive callers, and co-change partners with their freeze scores. " +
+      "Use BEFORE modifying a function to understand the blast radius.",
+    {
+      file_path: safeFilePath,
+      function_name: z.string().min(1).max(200),
+      repo_path: safeRepoPath,
+    },
+    async ({ file_path, function_name, repo_path }) => {
+      try {
+        if (!cachedGraph) {
+          try { cachedGraph = await buildCallGraph(repo_path ?? "", db); } catch { /* proceed without graph */ }
+        }
+        const result = predictImpact(db, cachedGraph, file_path, function_name, repo_path ?? "");
+        return { content: [{ type: "text" as const, text: result.formatted }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: sanitizeError(err) }], isError: true };
+      }
+    }
+  );
+
+  // ── get_codebase_conventions ──
+  server.tool(
+    "get_codebase_conventions",
+    "Extract coding conventions for a file's neighborhood — naming, imports, error handling, " +
+      "patterns, and protection density. Use to write code that is cohesive with the existing codebase.",
+    {
+      file_path: safeFilePath,
+      repo_path: safeRepoPath,
+    },
+    async ({ file_path, repo_path }) => {
+      try {
+        const result = getCodebaseConventions(db, file_path, repo_path ?? "");
+        return { content: [{ type: "text" as const, text: result.formatted }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: sanitizeError(err) }], isError: true };
       }
     }
   );
