@@ -123,8 +123,13 @@ Open the repo in Claude Code. It will automatically:
 | `search_decisions` | Search past decisions by keyword across the entire repo |
 | `create_override` | Override a frozen function (user approves in Claude Code UI) |
 | `extract_intent` | Extract intent for NOISE commits using the host LLM — no Ollama needed |
+| `find_similar_functions` | Search for existing functions that solve a similar problem before writing new code |
+| `predict_impact` | Predict what functions will break if a given function is modified |
+| `get_codebase_conventions` | Extract coding conventions for a file's neighborhood |
 
 **MCP Resource:** `wisegit://manifest/{filePath}` — decision manifest as auto-discoverable resource
+
+**MCP Prompt:** `check_before_edit` — mandatory workflow prompt that returns the decision manifest before editing any file
 
 ### LLM Intent Extraction Strategy
 
@@ -158,6 +163,7 @@ wisegit branch-capture                           # Capture branch context from l
 wisegit branch-list                              # List all captured branch snapshots
 wisegit branch-recover <sha>                     # Recover context from old merge commit
 wisegit calibrate                                # Show adaptive obsolescence weights vs defaults
+wisegit report [--output <file>]                 # Generate HTML report with scores + insights
 wisegit serve                                    # Start MCP server (stdio)
 wisegit hook install|uninstall                   # Manage git hooks (post-commit + post-merge)
 ```

@@ -409,11 +409,29 @@ OPEN:    chargeCard()  [score: 0.21]  ← safe to modify
 MCP is primary but **not the only interface**. MCP is currently in a hype cycle [1].
 CLI fallback means the tool works regardless of protocol adoption.
 
-**MCP tools:**
+**MCP tools — protection (8):**
 ```
 get_file_decisions(file)       → manifest + freeze scores + recovery levels
 get_freeze_score(file, fn)     → score + reasoning + academic signal breakdown
-search_decisions(query)        → BM25 + vector hybrid retrieval
+get_function_history(file, fn) → full chronological decision timeline
+get_theory_gaps(file)          → functions with unrecoverable rationale
+get_branch_context()           → branch merge history — what was migrated and why
+search_decisions(query)        → keyword search across the entire repo
+create_override(file, fn)      → override a frozen function (user approves in UI)
+extract_intent(file, fn)       → extract intent for NOISE commits via host LLM
+```
+
+**MCP tools — guidance (3):**
+```
+find_similar_functions(file, fn)    → search for existing functions solving a similar problem
+predict_impact(file, fn)            → predict what functions will break if modified
+get_codebase_conventions(file)      → extract coding conventions for a file's neighborhood
+```
+
+**MCP resource + prompt:**
+```
+wisegit://manifest/{filePath}  → decision manifest as auto-discoverable resource
+check_before_edit              → mandatory workflow prompt before editing any file
 ```
 
 **CLI fallback:**
@@ -422,6 +440,7 @@ gitwise audit <file>           # full manifest display
 gitwise history <function>     # complete event timeline
 gitwise override <function>    # intentional decision override
 gitwise init --full-history    # first-run indexing
+gitwise report                 # HTML report with scores + insights
 ```
 
 Everything local. Zero bytes sent to any external service.
@@ -732,6 +751,10 @@ gitwise init --full-history
   for NOISE commit intent extraction, Ollama as fallback for CLI mode
 - [x] `wisegit://manifest/{filePath}` resource template
 - [x] `check_before_edit` prompt
+- [x] `find_similar_functions` MCP tool — search for existing functions solving a similar problem before writing new code
+- [x] `predict_impact` MCP tool — predict what functions will break if a given function is modified
+- [x] `get_codebase_conventions` MCP tool — extract coding conventions for a file's neighborhood
+- [x] `wisegit report` CLI — generate HTML report with freeze scores, theory health, timeline, and dependency insights
 
 ---
 
