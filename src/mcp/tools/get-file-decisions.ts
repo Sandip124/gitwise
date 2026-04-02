@@ -10,6 +10,14 @@ export interface FileDecisionsResult {
   filePath: string;
   manifest: string;
   functions: FunctionSummary[];
+  preflight: PreflightResult;
+}
+
+interface PreflightResult {
+  ready: boolean;            // Can this file be safely edited?
+  blockers: string[];        // What's preventing edits (FROZEN functions without overrides)
+  warnings: string[];        // Caution needed (STABLE functions, theory gaps)
+  coverage: number;          // 0-1: how much decision context we have for this file
 }
 
 interface FunctionSummary {
@@ -133,13 +141,43 @@ export function getFileDecisions(
 
   functions.sort((a, b) => b.freezeScore - a.freezeScore);
 
-  const manifest = formatManifest(filePath, functions);
-  return { filePath, manifest, functions };
+  // Compute preflight readiness
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+
+  for (const fn of functions) {
+    if (fn.status === "FROZEN") {
+      blockers.push(`${fn.functionName}() is FROZEN (score: ${fn.freezeScore.toFixed(2)}) — override required before editing`);
+    } else if (fn.status === "STABLE") {
+      warnings.push(`${fn.functionName}() is STABLE (score: ${fn.freezeScore.toFixed(2)}) — review intent history before modifying`);
+    }
+    if (fn.theoryRisk === "critical") {
+      warnings.push(`${fn.functionName}() has no active contributors — original knowledge may be lost`);
+    }
+  }
+
+  // Coverage: proportion of functions with at least 1 decision extracted
+  const withDecisions = functions.filter(f => f.decisions.length > 0).length;
+  const coverage = functions.length > 0 ? withDecisions / functions.length : 0;
+  if (coverage < 0.5) {
+    warnings.push(`Low decision coverage (${(coverage * 100).toFixed(0)}%) — run 'wisegit enrich' for richer context`);
+  }
+
+  const preflight: PreflightResult = {
+    ready: blockers.length === 0,
+    blockers,
+    warnings,
+    coverage,
+  };
+
+  const manifest = formatManifest(filePath, functions, preflight);
+  return { filePath, manifest, functions, preflight };
 }
 
 function formatManifest(
   filePath: string,
-  functions: FunctionSummary[]
+  functions: FunctionSummary[],
+  preflight?: PreflightResult
 ): string {
   if (functions.length === 0) {
     return `[DECISION MANIFEST: ${filePath}]\nNo tracked functions found.`;
@@ -184,6 +222,25 @@ function formatManifest(
       lines.push(`    ${decision.confidence} \u2014 commit ${decision.commitSha}`);
     }
 
+    lines.push("");
+  }
+
+  // Preflight readiness summary
+  if (preflight) {
+    if (preflight.ready) {
+      lines.push(`PREFLIGHT: READY \u2014 all functions are open for modification`);
+    } else {
+      lines.push(`PREFLIGHT: BLOCKED \u2014 ${preflight.blockers.length} function(s) require override`);
+      for (const b of preflight.blockers) {
+        lines.push(`  \u2718 ${b}`);
+      }
+    }
+    if (preflight.warnings.length > 0) {
+      for (const w of preflight.warnings) {
+        lines.push(`  \u26a0 ${w}`);
+      }
+    }
+    lines.push(`  Coverage: ${(preflight.coverage * 100).toFixed(0)}%`);
     lines.push("");
   }
 

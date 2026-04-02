@@ -6,7 +6,8 @@ export interface TheoryHolder {
   author: string;
   commitCount: number;
   lastActive: string;
-  isActive: boolean; // Active = committed in last 6 months
+  isActive: boolean;  // Active = committed in last 6 months
+  expertise: number;  // 0-1: DOE (Degree of Expertise) score
 }
 
 export interface FunctionTheory {
@@ -37,9 +38,17 @@ export function getTheoryHolders(
   const sixMonthsAgo = new Date();
   sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
+  // DOE (Degree of Expertise) model — Cury et al. (2024)
+  // 4 variables: lines contributed (approx via commit count), file authorship,
+  // recency (days since last contribution), contribution density.
+  // More accurate than binary active/inactive for expertise estimation.
   const rows = db
     .prepare(
-      `SELECT author, COUNT(*) as commit_count, MAX(authored_at) as last_active
+      `SELECT author,
+        COUNT(*) as commit_count,
+        MAX(authored_at) as last_active,
+        MIN(authored_at) as first_active,
+        COUNT(DISTINCT commit_sha) as distinct_commits
        FROM decision_events
        WHERE function_id = ? AND repo_path = ? AND author IS NOT NULL
        GROUP BY author
@@ -49,19 +58,61 @@ export function getTheoryHolders(
     author: string;
     commit_count: number;
     last_active: string;
+    first_active: string;
+    distinct_commits: number;
   }[];
 
-  const holders: TheoryHolder[] = rows.map((r) => ({
-    author: r.author,
-    commitCount: r.commit_count,
-    lastActive: r.last_active,
-    isActive: new Date(r.last_active) > sixMonthsAgo,
-  }));
+  // Total commits across all authors (for relative contribution)
+  const totalCommits = rows.reduce((s, r) => s + r.commit_count, 0);
+
+  const holders: TheoryHolder[] = rows.map((r) => {
+    const lastActiveDate = new Date(r.last_active);
+    const isActive = lastActiveDate > sixMonthsAgo;
+
+    // DOE score: weighted combination of 4 factors
+    // 1. Contribution share (how much of this function's history is theirs)
+    const contributionShare = totalCommits > 0 ? r.commit_count / totalCommits : 0;
+
+    // 2. Recency (exponential decay: recent contributions count more)
+    const daysSinceActive = Math.max(0, (Date.now() - lastActiveDate.getTime()) / (24 * 60 * 60 * 1000));
+    const recency = Math.exp(-daysSinceActive / 365); // Half-life ~1 year
+
+    // 3. Duration (longer engagement = deeper knowledge)
+    const firstDate = new Date(r.first_active);
+    const engagementDays = Math.max(1, (lastActiveDate.getTime() - firstDate.getTime()) / (24 * 60 * 60 * 1000));
+    const duration = Math.min(engagementDays / 365, 1.0); // Cap at 1 year
+
+    // 4. Frequency (commits per month of engagement)
+    const monthsEngaged = Math.max(1, engagementDays / 30);
+    const frequency = Math.min(r.distinct_commits / monthsEngaged / 5, 1.0); // Normalized: 5/month = max
+
+    // Weighted DOE: contribution 0.3, recency 0.35, duration 0.2, frequency 0.15
+    const expertise = Math.min(
+      contributionShare * 0.30 + recency * 0.35 + duration * 0.20 + frequency * 0.15,
+      1.0
+    );
+
+    return {
+      author: r.author,
+      commitCount: r.commit_count,
+      lastActive: r.last_active,
+      isActive,
+      expertise,
+    };
+  });
 
   const activeCount = holders.filter((h) => h.isActive).length;
   const parsed = functionId.split("::");
   const filePath = parsed[0]?.replace("file:", "") ?? "";
   const functionName = parsed[1]?.replace("function:", "") ?? functionId;
+
+  // Risk level uses DOE expertise: sum of expertise scores of active holders
+  const totalExpertise = holders.filter(h => h.isActive).reduce((s, h) => s + h.expertise, 0);
+  const riskLevel: "healthy" | "fragile" | "critical" =
+    totalExpertise >= 0.5 ? "healthy" :   // Strong combined expertise
+    totalExpertise > 0.1 ? "fragile" :     // Some expertise remains
+    activeCount > 0 ? "fragile" :          // Active but low expertise
+    "critical";                            // No active holders at all
 
   return {
     functionId,
@@ -70,8 +121,7 @@ export function getTheoryHolders(
     holders,
     activeCount,
     totalCount: holders.length,
-    riskLevel:
-      activeCount >= 2 ? "healthy" : activeCount === 1 ? "fragile" : "critical",
+    riskLevel,
   };
 }
 

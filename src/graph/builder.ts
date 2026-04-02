@@ -122,6 +122,22 @@ export async function buildCallGraph(
 /**
  * Find function call names within a line range of the AST.
  */
+// Node types for function calls across all supported languages
+const CALL_NODE_TYPES = new Set([
+  "call_expression",        // JavaScript, TypeScript
+  "invocation_expression",  // C#
+  "call",                   // Python
+  "call_expression",        // Go, Rust
+]);
+
+const MEMBER_ACCESS_TYPES = new Set([
+  "member_expression",         // JavaScript, TypeScript
+  "member_access_expression",  // C#
+  "attribute",                 // Python (obj.method)
+  "selector_expression",       // Go (obj.Method)
+  "field_expression",          // Rust (obj.method)
+]);
+
 function findCallsInRange(
   root: Node,
   startRow: number,
@@ -133,23 +149,36 @@ function findCallsInRange(
     if (node.startPosition.row > endRow) return;
     if (node.endPosition.row < startRow) return;
 
-    if (
-      node.type === "call_expression" ||
-      node.type === "invocation_expression"
-    ) {
+    if (CALL_NODE_TYPES.has(node.type)) {
       const fn = node.childForFieldName("function");
       if (fn) {
         // Simple name: foo()
         if (fn.type === "identifier") {
           calls.add(fn.text);
         }
-        // Member access: obj.foo() — take the method name
-        else if (
-          fn.type === "member_expression" ||
-          fn.type === "member_access_expression"
-        ) {
-          const prop = fn.childForFieldName("name") ?? fn.childForFieldName("property");
+        // Member access: obj.foo(), self.method(), etc.
+        else if (MEMBER_ACCESS_TYPES.has(fn.type)) {
+          const prop =
+            fn.childForFieldName("name") ??      // C#
+            fn.childForFieldName("property") ??   // JS/TS
+            fn.childForFieldName("attribute") ??  // Python
+            fn.childForFieldName("field");        // Go/Rust
           if (prop) calls.add(prop.text);
+        }
+      }
+    }
+
+    // Python: function calls are just `call` nodes with a `function` field
+    // but also handle `self.method()` which is call > attribute > identifier
+    if (node.type === "call") {
+      const fn = node.childForFieldName("function");
+      if (fn) {
+        if (fn.type === "identifier") {
+          calls.add(fn.text);
+        } else if (fn.type === "attribute") {
+          // self.method() or obj.method() — take the attribute name
+          const attr = fn.childForFieldName("attribute");
+          if (attr) calls.add(attr.text);
         }
       }
     }

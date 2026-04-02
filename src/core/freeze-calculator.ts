@@ -66,17 +66,36 @@ export function calculateFreezeScore(
     arandaSignals: arandaScore,
   };
 
-  const baseScore = clamp(
-    breakdown.gitSignals * CATEGORY_WEIGHTS.gitSignals +
-      breakdown.issueSignals * CATEGORY_WEIGHTS.issueSignals +
-      breakdown.codeStructure * CATEGORY_WEIGHTS.codeStructure +
-      breakdown.testSignals * CATEGORY_WEIGHTS.testSignals +
-      breakdown.structural * CATEGORY_WEIGHTS.structural +
-      breakdown.naurTheory * CATEGORY_WEIGHTS.naurTheory +
-      breakdown.arandaSignals * CATEGORY_WEIGHTS.arandaSignals,
-    0,
-    1
-  );
+  // Aggregate using weighted average of PRESENT signals only.
+  // Zeros from unconfigured categories (e.g., issue enrichment not run)
+  // should NOT drag the score down — they represent missing data, not
+  // evidence of low intentionality.
+  //
+  // This fixes the fundamental flaw where the additive weighted sum
+  // was mathematically guaranteed to produce low scores when some
+  // signal categories weren't computed.
+  const signalEntries: { value: number; weight: number }[] = [
+    { value: breakdown.gitSignals, weight: CATEGORY_WEIGHTS.gitSignals },
+    { value: breakdown.issueSignals, weight: CATEGORY_WEIGHTS.issueSignals },
+    { value: breakdown.codeStructure, weight: CATEGORY_WEIGHTS.codeStructure },
+    { value: breakdown.testSignals, weight: CATEGORY_WEIGHTS.testSignals },
+    { value: breakdown.structural, weight: CATEGORY_WEIGHTS.structural },
+    { value: breakdown.naurTheory, weight: CATEGORY_WEIGHTS.naurTheory },
+    { value: breakdown.arandaSignals, weight: CATEGORY_WEIGHTS.arandaSignals },
+  ];
+
+  // Only include signals that are actually present (> 0)
+  const presentSignals = signalEntries.filter(s => s.value > 0);
+
+  let baseScore: number;
+  if (presentSignals.length === 0) {
+    baseScore = 0;
+  } else {
+    // Weighted average of present signals, normalized by their total weight
+    const totalWeight = presentSignals.reduce((s, e) => s + e.weight, 0);
+    const weightedSum = presentSignals.reduce((s, e) => s + e.value * e.weight, 0);
+    baseScore = clamp(weightedSum / totalWeight, 0, 1);
+  }
 
   // Apply obsolescence penalty: final = base × (1 - penalty)
   // A penalty of 0.7 means the function retains 30% of its base score
@@ -140,7 +159,16 @@ function calculateGitSignals(events: DecisionEvent[], repoPath?: string): number
     0.25
   );
 
-  // Age without modification (years stable)
+  // Age-based stability signal using Weibull survival model
+  // Per Spinellis et al. (2021): code lines follow a Weibull distribution with
+  // decreasing hazard rate. Median lifespan ~2.4 years. Code that survives past
+  // the early modification period has exponentially decreasing probability of change.
+  //
+  // Weibull survival: S(t) = exp(-(t/λ)^k)
+  //   k (shape) = 0.7 (decreasing hazard — older code is more stable)
+  //   λ (scale) = 2.4 years (median survival time from empirical data)
+  //
+  // The signal increases non-linearly: rapid gain in first 2 years, then plateaus.
   const sortedByDate = events
     .filter((e) => e.authoredAt)
     .sort(
@@ -151,10 +179,13 @@ function calculateGitSignals(events: DecisionEvent[], repoPath?: string): number
     const lastModified = sortedByDate[sortedByDate.length - 1].authoredAt!;
     const yearsStable =
       (Date.now() - lastModified.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-    score += Math.min(
-      yearsStable * GIT_SIGNALS.ageWithoutModification,
-      0.5
-    );
+
+    // Weibull CDF: F(t) = 1 - exp(-(t/λ)^k) — probability of surviving this long
+    const k = 0.7;  // shape: decreasing hazard
+    const lambda = 2.4; // scale: median lifespan in years
+    const survivalScore = 1 - Math.exp(-Math.pow(yearsStable / lambda, k));
+
+    score += Math.min(survivalScore * 0.5, 0.5); // max contribution: 0.5
   }
 
   // Branch type: fix/, hotfix/

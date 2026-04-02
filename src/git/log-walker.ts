@@ -41,6 +41,27 @@ export class LogWalker {
   }
 
   /**
+   * Get commits after a specific SHA (newest-first for incremental indexing).
+   */
+  async getCommitsSince(sinceSha: string): Promise<CommitInfo[]> {
+    try {
+      const log = await this.git.log(["--reverse", `${sinceSha}..HEAD`]);
+      return log.all.map((entry) => ({
+        sha: entry.hash,
+        message: entry.message,
+        author: entry.author_name,
+        authorEmail: entry.author_email,
+        date: new Date(entry.date),
+        parentSha: null,
+      }));
+    } catch {
+      // If sinceSha is invalid (e.g., force-pushed away), fall back to all
+      logger.warn(`Could not get commits since ${sinceSha} — falling back to full history`);
+      return this.getAllCommits();
+    }
+  }
+
+  /**
    * Get the diff for a specific commit as raw text.
    */
   async getCommitDiff(sha: string): Promise<string> {

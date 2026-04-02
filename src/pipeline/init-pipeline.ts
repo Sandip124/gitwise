@@ -8,6 +8,7 @@ import { getLanguageForFile, isSupportedFile } from "../ast/languages/index.js";
 import { classifyCommit } from "../core/commit-classifier.js";
 import { extractIntent } from "../core/intent-extractor.js";
 import { calculateFreezeScore } from "../core/freeze-calculator.js";
+import { FileHashStore } from "../db/file-hash-store.js";
 import {
   CommitClassification,
   DecisionEvent,
@@ -54,8 +55,12 @@ export async function runInitPipeline(
   const chunkStore = new ChunkStore(db);
   const freezeStore = new FreezeStore(db);
 
+  // Incremental indexing: only process commits after last indexed SHA
+  const fileHashStore = new FileHashStore(db);
+  const lastIndexedSha = fileHashStore.getLastIndexedSha(repoPath);
+
   const hasExisting = eventStore.hasEventsForRepo(repoPath);
-  if (hasExisting && !options.fullHistory) {
+  if (hasExisting && !options.fullHistory && !lastIndexedSha) {
     logger.info("Repository already indexed. Use --full-history to re-index.");
     return {
       commitsProcessed: 0,
@@ -79,9 +84,25 @@ export async function runInitPipeline(
     }
   }
 
-  const commits = await walker.getAllCommits();
+  // Get commits — incremental if we have a last indexed SHA
+  let commits: CommitInfo[];
+  if (lastIndexedSha && !options.fullHistory) {
+    commits = await walker.getCommitsSince(lastIndexedSha);
+    if (commits.length === 0) {
+      logger.info("No new commits since last index.");
+      return {
+        commitsProcessed: 0,
+        eventsCreated: 0,
+        functionsTracked: 0,
+        durationMs: Date.now() - startTime,
+      };
+    }
+    logger.info(`Processing ${commits.length} new commits (since ${lastIndexedSha.slice(0, 7)})...`);
+  } else {
+    commits = await walker.getAllCommits();
+    logger.info(`Processing ${commits.length} commits (full history)...`);
+  }
   const totalCommits = commits.length;
-  logger.info(`Processing ${totalCommits} commits...`);
 
   let eventsCreated = 0;
   const allFunctionIds = new Set<string>();
@@ -122,6 +143,13 @@ export async function runInitPipeline(
     const events = eventStore.getEventsForFunction(functionId, repoPath);
     const score = calculateFreezeScore(events);
     freezeStore.upsertScore(repoPath, score);
+  }
+
+  // Save last indexed SHA for incremental init next time
+  if (commits.length > 0) {
+    const latestSha = commits[0].sha; // commits are newest-first
+    fileHashStore.updateRepoState(repoPath, latestSha, allFunctionIds.size);
+    logger.info(`Saved last indexed commit: ${latestSha.slice(0, 7)}`);
   }
 
   const durationMs = Date.now() - startTime;

@@ -27,6 +27,9 @@ export async function recomputeCommand(options: {
     process.stderr.write("\n");
     console.log(`\nRecompute complete:`);
     console.log(`  Functions recomputed: ${result.functionsRecomputed}`);
+    if (result.functionsSkipped > 0) {
+      console.log(`  Functions skipped:    ${result.functionsSkipped} (unchanged)`);
+    }
     console.log(`  Theory gaps found:    ${result.theoryGapsFound}`);
     console.log(`  Obsolescence signals: ${result.obsolescenceDetected}`);
     console.log(`  Call graph:           ${result.graphNodes} nodes, ${result.graphEdges} edges`);
