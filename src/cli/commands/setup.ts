@@ -11,6 +11,7 @@ import { execFileSync } from "node:child_process";
 import { getDb, closeDb } from "../../db/database.js";
 import { runMigrations } from "../../db/migrator.js";
 import { runInitPipeline } from "../../pipeline/init-pipeline.js";
+import { runRecomputePipeline } from "../../pipeline/recompute-pipeline.js";
 import { logger } from "../../shared/logger.js";
 import {
   getWisegitPaths,
@@ -343,6 +344,22 @@ export async function setupCommand(options: {
       console.log(
         `  \u2713 Indexed: ${result.commitsProcessed} commits, ${result.eventsCreated} events, ${result.functionsTracked} functions`
       );
+
+      // Run full signal recompute so freeze scores include PageRank, co-change,
+      // code structure, test signals, Naur theory, and obsolescence from day one.
+      // Without this, scores are git-signals only — FROZEN functions may appear STABLE.
+      console.log("  Computing full freeze scores (PageRank, co-change, test signals)...");
+      try {
+        const recomputed = await runRecomputePipeline(repoPath, db);
+        console.log(
+          `  \u2713 Scores ready: ${recomputed.functionsRecomputed} functions scored, ${recomputed.theoryGapsFound} theory gaps, ${recomputed.obsolescenceDetected} obsolete`
+        );
+      } catch (err) {
+        console.log(
+          "  \u26a0 Full scoring failed (partial scores available): " +
+            (err instanceof Error ? err.message : String(err))
+        );
+      }
     } catch (err) {
       console.log(
         "  \u26a0 Indexing failed: " +
