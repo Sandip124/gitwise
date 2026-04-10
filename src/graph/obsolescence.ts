@@ -430,18 +430,25 @@ function extractImportSources(repoPath: string, filePath: string): string[] {
   try {
     const content = readFileSync(resolve(repoPath, filePath), "utf-8");
     const imports: string[] = [];
+    const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
 
-    // JS/TS imports
-    const jsImports = content.matchAll(/(?:from\s+|require\s*\(\s*)['"]([^'"]+)['"]/g);
-    for (const m of jsImports) imports.push(m[1]);
-
-    // C# using
-    const csImports = content.matchAll(/using\s+(?:static\s+)?([A-Za-z][\w.]*)\s*;/g);
-    for (const m of csImports) imports.push(m[1]);
-
-    // Python imports
-    const pyImports = content.matchAll(/(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))/g);
-    for (const m of pyImports) imports.push(m[1] || m[2]);
+    if (ext === "ts" || ext === "tsx" || ext === "js" || ext === "jsx" || ext === "mjs" || ext === "cjs") {
+      // JS/TS: only match module specifiers in from/require — not identifiers
+      const jsImports = content.matchAll(/(?:from\s+|require\s*\(\s*)['"]([^'"]+)['"]/g);
+      for (const m of jsImports) imports.push(m[1]);
+    } else if (ext === "cs") {
+      const csImports = content.matchAll(/using\s+(?:static\s+)?([A-Za-z][\w.]*)\s*;/g);
+      for (const m of csImports) imports.push(m[1]);
+    } else if (ext === "py") {
+      const pyImports = content.matchAll(/(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))/g);
+      for (const m of pyImports) imports.push(m[1] || m[2]);
+    } else if (ext === "go") {
+      const goImports = content.matchAll(/import\s+"([\w./]+)"/g);
+      for (const m of goImports) imports.push(m[1]);
+    } else if (ext === "rs") {
+      const rsImports = content.matchAll(/extern\s+crate\s+([\w]+)/g);
+      for (const m of rsImports) imports.push(m[1]);
+    }
 
     return imports;
   } catch {
